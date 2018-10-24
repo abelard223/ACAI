@@ -1,46 +1,20 @@
-# Copyright 2018 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-#!/usr/bin/env python
-"""Adversarial latent generalization auto-encoder.
-Regularized discriminator.
-"""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import math
-
-from absl import app
-from absl import flags
-
-import tensorflow as tf
-from lib import data, layers, train, utils, classifiers, eval
+import  math, os
+from    absl import app, flags
+import  tensorflow as tf
+from    lib import data, layers, train, utils, classifiers, eval
 
 FLAGS = flags.FLAGS
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 
 
 class ACAI(train.AE):
 
     def model(self, latent, depth, scales, advweight, advdepth, reg):
-        x = tf.placeholder(tf.float32,
-                           [None, self.height, self.width, self.colors], 'x')
+        x = tf.placeholder(tf.float32, [None, self.height, self.width, self.colors], 'x')
         l = tf.placeholder(tf.float32, [None, self.nclass], 'label')
-        h = tf.placeholder(
-            tf.float32,
-            [None, self.height >> scales, self.width >> scales, latent], 'h')
+        h = tf.placeholder(tf.float32, [None, self.height >> scales, self.width >> scales, latent], 'h')
 
         def encoder(x):
             return layers.encoder(x, scales, depth, latent, 'ae_enc')
@@ -50,9 +24,7 @@ class ACAI(train.AE):
             return v
 
         def disc(x):
-            return tf.reduce_mean(
-                layers.encoder(x, scales, advdepth, latent, 'disc'),
-                axis=[1, 2, 3])
+            return tf.reduce_mean(layers.encoder(x, scales, advdepth, latent, 'disc'), axis=[1, 2, 3])
 
         encode = encoder(x)
         decode = decoder(h)
@@ -64,8 +36,7 @@ class ACAI(train.AE):
         encode_mix = alpha * encode + (1 - alpha) * encode[::-1]
         decode_mix = decoder(encode_mix)
 
-        loss_disc = tf.reduce_mean(
-            tf.square(disc(decode_mix) - alpha[:, 0, 0, 0]))
+        loss_disc = tf.reduce_mean(tf.square(disc(decode_mix) - alpha[:, 0, 0, 0]))
         loss_disc_real = tf.reduce_mean(tf.square(disc(ae + reg * (x - ae))))
         loss_ae_disc = tf.reduce_mean(tf.square(disc(decode_mix)))
 
@@ -75,8 +46,7 @@ class ACAI(train.AE):
         utils.HookReport.log_tensor(loss_ae_disc, 'loss_ae_disc')
         utils.HookReport.log_tensor(loss_disc_real, 'loss_disc_real')
 
-        xops = classifiers.single_layer_classifier(
-            tf.stop_gradient(encode), l, self.nclass)
+        xops = classifiers.single_layer_classifier(tf.stop_gradient(encode), l, self.nclass)
         xloss = tf.reduce_mean(xops.loss)
         utils.HookReport.log_tensor(xloss, 'classify_latent')
 
@@ -85,16 +55,10 @@ class ACAI(train.AE):
         disc_vars = tf.global_variables('disc')
         xl_vars = tf.global_variables('single_layer_classifier')
         with tf.control_dependencies(update_ops):
-            train_ae = tf.train.AdamOptimizer(FLAGS.lr).minimize(
-                loss_ae + advweight * loss_ae_disc,
-                var_list=ae_vars)
-            train_d = tf.train.AdamOptimizer(FLAGS.lr).minimize(
-                loss_disc + loss_disc_real,
-                var_list=disc_vars)
-            train_xl = tf.train.AdamOptimizer(FLAGS.lr).minimize(
-                xloss, tf.train.get_global_step(), var_list=xl_vars)
-        ops = train.AEOps(x, h, l, encode, decode, ae,
-                          tf.group(train_ae, train_d, train_xl),
+            train_ae = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss_ae + advweight * loss_ae_disc, var_list=ae_vars)
+            train_d = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss_disc + loss_disc_real, var_list=disc_vars)
+            train_xl = tf.train.AdamOptimizer(FLAGS.lr).minimize(xloss, tf.train.get_global_step(), var_list=xl_vars)
+        ops = train.AEOps(x, h, l, encode, decode, ae, tf.group(train_ae, train_d, train_xl),
                           classify_latent=xops.output)
 
         n_interpolations = 16
@@ -142,13 +106,17 @@ def main(argv):
 
 
 if __name__ == '__main__':
+    flags.DEFINE_string('train_dir', './logs', 'Folder where to save training data.')
+    flags.DEFINE_float('lr', 0.0001, 'Learning rate.')
+    flags.DEFINE_integer('batch', 64, 'Batch size.')
+    flags.DEFINE_string('dataset', 'lines32', 'Data to train on.')
+    flags.DEFINE_integer('total_kimg', 1 << 14, 'Training duration in samples.')
+
     flags.DEFINE_integer('depth', 64, 'Depth of first for convolution.')
-    flags.DEFINE_integer(
-        'latent', 16,
-        'Latent space depth, the total latent size is the depth multiplied by '
-        'latent_width ** 2.')
+    flags.DEFINE_integer('latent', 16, 'Latent depth=depth multiplied by latent_width ** 2.')
     flags.DEFINE_integer('latent_width', 4, 'Width of the latent space.')
     flags.DEFINE_float('advweight', 0.5, 'Adversarial weight.')
     flags.DEFINE_integer('advdepth', 0, 'Depth for adversary network.')
     flags.DEFINE_float('reg', 0.2, 'Amount of discriminator regularization.')
+
     app.run(main)

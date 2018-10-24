@@ -1,45 +1,22 @@
-# Copyright 2018 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-#!/usr/bin/env python
-"""Adversarial autoencoder.
-"""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import math
-
-from absl import app
-from absl import flags
-
-import tensorflow as tf
-from lib import data, layers, train, utils, classifiers, eval
+import  math, os
+from    absl import app, flags
+import  tensorflow as tf
+from    lib import data, layers, train, utils, classifiers, eval
 
 FLAGS = flags.FLAGS
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+
+
 
 
 class AAE(train.AE):
 
     def model(self, latent, depth, scales, adversary_lr, disc_layer_sizes):
-        x = tf.placeholder(tf.float32,
-                           [None, self.height, self.width, self.colors], 'x')
+        x = tf.placeholder(tf.float32, [None, self.height, self.width, self.colors], 'x')
         l = tf.placeholder(tf.float32, [None, self.nclass], 'label')
-        h = tf.placeholder(
-            tf.float32,
-            [None, self.height >> scales, self.width >> scales, latent], 'h')
+        h = tf.placeholder(tf.float32, [None, self.height >> scales, self.width >> scales, latent], 'h')
 
         def encoder(x):
             return layers.encoder(x, scales, depth, latent, 'ae_enc')
@@ -49,9 +26,13 @@ class AAE(train.AE):
 
         def discriminator(h):
             with tf.variable_scope('disc', reuse=tf.AUTO_REUSE):
+                # [b, 4, 4, 16] => [b, 16*16]
                 h = tf.layers.flatten(h)
                 for size in [int(s) for s in disc_layer_sizes.split(',')]:
+                    # Dense(16*16, 100)
+                    # Dense(100, 100)
                     h = tf.layers.dense(h, size, tf.nn.leaky_relu)
+                # [b, 100] => [b, 1]
                 return tf.layers.dense(h, 1)
 
         encode = encoder(x)
@@ -59,11 +40,13 @@ class AAE(train.AE):
         ae = decoder(encode)
         loss_ae = tf.losses.mean_squared_error(x, ae)
 
+        # asume the prior dist of h is normal
         prior_samples = tf.random_normal(tf.shape(encode), dtype=encode.dtype)
+        # G(z)
         adversary_logit_latent = discriminator(encode)
+        # real x
         adversary_logit_prior = discriminator(prior_samples)
-        adversary_loss_latents = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(
+        adversary_loss_latents = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
                 logits=adversary_logit_latent,
                 labels=tf.zeros_like(adversary_logit_latent)))
         adversary_loss_prior = tf.reduce_mean(
@@ -79,6 +62,7 @@ class AAE(train.AE):
             labels = tf.logical_and(label, tf.ones_like(logits, dtype=bool))
             correct = tf.equal(tf.greater(logits, 0), labels)
             return tf.reduce_mean(tf.to_float(correct))
+
         latent_accuracy = _accuracy(adversary_logit_latent, False)
         prior_accuracy = _accuracy(adversary_logit_prior, True)
         adversary_accuracy = (latent_accuracy + prior_accuracy)/2
@@ -89,8 +73,7 @@ class AAE(train.AE):
         utils.HookReport.log_tensor(autoencoder_loss_latents, 'loss_ae_latent')
         utils.HookReport.log_tensor(adversary_accuracy, 'adversary_accuracy')
 
-        xops = classifiers.single_layer_classifier(
-            tf.stop_gradient(encode), l, self.nclass)
+        xops = classifiers.single_layer_classifier(tf.stop_gradient(encode), l, self.nclass)
         xloss = tf.reduce_mean(xops.loss)
         utils.HookReport.log_tensor(xloss, 'classify_latent')
 
@@ -99,27 +82,21 @@ class AAE(train.AE):
         disc_vars = tf.global_variables('disc')
         xl_vars = tf.global_variables('single_layer_classifier')
         with tf.control_dependencies(update_ops):
-            train_ae = tf.train.AdamOptimizer(FLAGS.lr).minimize(
-                loss_ae + autoencoder_loss_latents, var_list=ae_vars)
-            train_disc = tf.train.AdamOptimizer(adversary_lr).minimize(
-                adversary_loss_prior + adversary_loss_latents,
+            train_ae = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss_ae + autoencoder_loss_latents, var_list=ae_vars)
+            train_disc = tf.train.AdamOptimizer(adversary_lr).minimize(adversary_loss_prior + adversary_loss_latents,
                 var_list=disc_vars)
-            train_xl = tf.train.AdamOptimizer(FLAGS.lr).minimize(
-                xloss, tf.train.get_global_step(), var_list=xl_vars)
-        ops = train.AEOps(x, h, l, encode, decode, ae,
-                          tf.group(train_ae, train_disc, train_xl),
+            train_xl = tf.train.AdamOptimizer(FLAGS.lr).minimize(xloss, tf.train.get_global_step(), var_list=xl_vars)
+        ops = train.AEOps(x, h, l, encode, decode, ae, tf.group(train_ae, train_disc, train_xl),
                           classify_latent=xops.output)
 
         n_interpolations = 16
         n_images_per_interpolation = 16
 
         def gen_images():
-            return self.make_sample_grid_and_save(
-                ops, interpolation=n_interpolations,
+            return self.make_sample_grid_and_save(ops, interpolation=n_interpolations,
                 height=n_images_per_interpolation)
 
-        recon, inter, slerp, samples = tf.py_func(
-            gen_images, [], [tf.float32]*4)
+        recon, inter, slerp, samples = tf.py_func(gen_images, [], [tf.float32]*4)
         tf.summary.image('reconstruction', tf.expand_dims(recon, 0))
         tf.summary.image('interpolation', tf.expand_dims(inter, 0))
         tf.summary.image('slerp', tf.expand_dims(slerp, 0))
@@ -154,14 +131,17 @@ def main(argv):
 
 
 if __name__ == '__main__':
+    flags.DEFINE_string('train_dir', './logs', 'Folder where to save training data.')
+    flags.DEFINE_float('lr', 0.0001, 'Learning rate.')
+    flags.DEFINE_integer('batch', 64, 'Batch size.')
+    flags.DEFINE_integer('total_kimg', 1 << 14, 'Training duration in samples.')
+
+    flags.DEFINE_string('dataset', 'lines32', 'Data to train on.')
     flags.DEFINE_integer('depth', 64, 'Depth of first for convolution.')
-    flags.DEFINE_integer(
-        'latent', 16,
-        'Latent space depth, the total latent size is the depth multiplied by '
-        'latent_width ** 2.')
+    flags.DEFINE_integer('latent', 16, 'Latent depth=depth multiplied by latent_width ** 2.')
     flags.DEFINE_integer('latent_width', 4, 'Width of the latent space.')
-    flags.DEFINE_float('adversary_lr', 1e-4,
-                       'Learning rate for discriminator.')
-    flags.DEFINE_string('disc_layer_sizes', '100,100',
-                        'Comma-separated list of discriminator layer sizes.')
+
+    flags.DEFINE_float('adversary_lr', 1e-4, 'Learning rate for discriminator.')
+    flags.DEFINE_string('disc_layer_sizes', '100,100', 'Comma-separated list of discriminator layer sizes.')
+
     app.run(main)

@@ -1,39 +1,23 @@
-# Copyright 2018 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-#!/usr/bin/env python
-"""Cluster latents representations in AEs.
-"""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from absl import app
-from absl import flags
-import all_aes
-import tensorflow as tf
-from lib import data, utils
-import numpy as np
-import numpy.linalg as la
-import sklearn
-from sklearn.cluster import KMeans
-from munkres import Munkres
+from    absl import app, flags
+import  all_aes
+import  tensorflow as tf
+from    lib import data, utils
+import  numpy as np
+import  numpy.linalg as la
+import  sklearn
+from    sklearn.cluster import KMeans
+from    munkres import Munkres
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('ae_dir', '', 'Folder containing AE to use for DA.')
+
+flags.DEFINE_string('train_dir', './logs', 'Folder where to save training data.')
+flags.DEFINE_float('lr', 0.0001, 'Learning rate.')
+flags.DEFINE_integer('batch', 64, 'Batch size.')
+flags.DEFINE_string('dataset', 'mnist32', 'Data to train on.')
+flags.DEFINE_integer('total_kimg', 1 << 14, 'Training duration in samples.')
+
+flags.DEFINE_string('ae_dir', './ae_data', 'Folder containing AE to use for DA.')
 flags.DEFINE_integer('use_svd', 1, 'Whether to normalize singular values.')
 flags.DEFINE_integer('n_init', 1000, 'Number of inits for k-means.')
 flags.DEFINE_integer('n_jobs', 8, 'Number of jobs for k-means.')
@@ -109,22 +93,18 @@ def get_latents_and_labels(sess, ops, dataset, batches=None):
 
 
 def main(argv):
-    del argv  # Unused.
-    ae, ds = utils.load_ae(FLAGS.ae_dir, FLAGS.dataset, FLAGS.batch,
-                           all_aes.ALL_AES, return_dataset=True)
+
+    print(FLAGS.flag_values_dict())
+
+    ae, ds = utils.load_ae(FLAGS.ae_dir, FLAGS.dataset, FLAGS.batch, all_aes.ALL_AES, return_dataset=True)
     with utils.HookReport.disable():
         ae.eval_mode()
 
     # Convert all test samples to latents and get the labels
-    test_latents, test_labels = get_latents_and_labels(ae.eval_sess,
-                                                       ae.eval_ops,
-                                                       ds.test)
+    test_latents, test_labels = get_latents_and_labels(ae.eval_sess, ae.eval_ops, ds.test)
     print('Shape of test_labels = {}'.format(np.shape(test_labels)))
     print('Shape of test_latents = {}'.format(np.shape(test_latents)))
-    train_latents, train_labels = get_latents_and_labels(ae.eval_sess,
-                                                         ae.eval_ops,
-                                                         ds.train_once,
-                                                         60000)
+    train_latents, train_labels = get_latents_and_labels(ae.eval_sess, ae.eval_ops, ds.train_once, 60000)
     print('Shape of train_labels = {}'.format(np.shape(train_labels)))
     print('Shape of train_latents = {}'.format(np.shape(train_latents)))
     if not FLAGS.use_svd:
@@ -148,6 +128,7 @@ def main(argv):
         test_latents = (test_latents.dot(vt.T) / (s + 1e-5))
     rank = train_latents.shape[1]
     for x in range(FLAGS.n_try):
+        print('n_try:', x)
         acc = cluster(train_latents[:, :rank].copy(),
                       train_labels[:, :rank].copy(),
                       test_latents[:, :rank].copy(),

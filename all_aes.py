@@ -16,6 +16,11 @@
 
 import baseline, denoising, dropout, aae, vae, acai, vqvae
 
+
+
+
 ALL_AES = {x.__name__: x for x in
            [baseline.AEBaseline, denoising.AEDenoising, dropout.AEDropout,
             aae.AAE, vae.VAE, acai.ACAI, vqvae.AEVQVAE]}
+
+print(ALL_AES.keys())
