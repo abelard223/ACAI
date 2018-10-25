@@ -97,7 +97,7 @@ if __name__ == '__main__':
     flags.DEFINE_string('train_dir', './logs','Folder where to save training data.')
     flags.DEFINE_float('lr', 0.0001, 'Learning rate.')
     flags.DEFINE_integer('batch', 64, 'Batch size.')
-    flags.DEFINE_string('dataset', 'lines32', 'Data to train on.')
+    flags.DEFINE_string('dataset', 'mnist32', 'Data to train on.')
     flags.DEFINE_integer('total_kimg', 1 << 14, 'Training duration in samples.')
     flags.DEFINE_integer('depth', 64, 'Depth of first for convolution.')
     flags.DEFINE_integer('latent', 16, 'Latent depth = depth multiplied by latent_width ** 2.')
