@@ -208,7 +208,7 @@ class MetaAE(train.AE):
         # get hidden features maps dim/height/width and channel number
         h_d, h_c = self.height>>scales, latent
 
-        print('h_d:', h_d, 'h_c:', h_c, 'ch:', depth, 'scales:', scales)
+        print('h_d:', h_d, 'h_c:', h_c, 'ch:', depth, 'scales:', scales, 'batchsz:', FLAGS.batch)
 
         # [b, 32, 32, 1]
         x = tf.placeholder(tf.float32, [None, self.height, self.width, self.colors], name='x')
@@ -293,10 +293,14 @@ class MetaAE(train.AE):
         meta_op = optimizer.apply_gradients(gvs)
 
 
+        # utils.HookReport.log_tensor(self.loss_spt, 'loss')
+        # # utils.HookReport.log_tensor(tf.sqrt(loss_spt) * 127.5, 'rmse')
+
+
         for i in range(update_num):
-            print(losses_qry[i])
-            utils.HookReport.log_tensor(losses_qry[i], 'loss_qry%d'%i)
-            utils.HookReport.log_tensor(tf.sqrt(losses_qry[i]) * 127.5, 'rmse%d'%i)
+            # print(losses_qry[i])
+            utils.HookReport.log_tensor(self.losses_qry[i], 'loss_qry%d'%i)
+            utils.HookReport.log_tensor(tf.sqrt(self.losses_qry[i]) * 127.5, 'rmse%d'%i)
 
         # we only use encode to acquire representation and wont use classification to backprop encoder
         # hence we will stop_gradient(encoder)
@@ -351,7 +355,7 @@ def main(argv):
 if __name__ == '__main__':
     import  os
 
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
 
     flags.DEFINE_string('train_dir', './logs','Folder where to save training data.')
     flags.DEFINE_float('lr', 0.0001, 'Learning rate.')
