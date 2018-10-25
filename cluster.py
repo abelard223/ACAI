@@ -17,7 +17,7 @@ flags.DEFINE_integer('batch', 64, 'Batch size.')
 flags.DEFINE_string('dataset', 'mnist32', 'Data to train on.')
 flags.DEFINE_integer('total_kimg', 1 << 14, 'Training duration in samples.')
 
-flags.DEFINE_string('ae_dir', './ae_data', 'Folder containing AE to use for DA.')
+flags.DEFINE_string('ae_dir', 'logs/mnist32/AEBaseline_depth16_latent2_scales3/', 'Folder containing AE to use for DA.')
 flags.DEFINE_integer('use_svd', 1, 'Whether to normalize singular values.')
 flags.DEFINE_integer('n_init', 1000, 'Number of inits for k-means.')
 flags.DEFINE_integer('n_jobs', 8, 'Number of jobs for k-means.')

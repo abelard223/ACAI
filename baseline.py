@@ -1,16 +1,8 @@
-#!/usr/bin/env python
+import  math
+from    absl import app,flags
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import math
-
-from absl import app
-from absl import flags
-
-import tensorflow as tf
-from lib import data, layers, train, utils, classifiers, eval
+import  tensorflow as tf
+from    lib import data, layers, train, utils, classifiers, eval
 
 FLAGS = flags.FLAGS
 
