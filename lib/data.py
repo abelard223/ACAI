@@ -1,44 +1,34 @@
-# Copyright 2018 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+import  functools
+import  glob
+import  math
+import  os
+import  random
 
-"""Input data for GANs.
+import  numpy as np
+import  tensorflow as tf
 
-This module provides the input images.
-"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-import functools
-import glob
-import math
-import os
-import random
 
-import numpy as np
-import tensorflow as tf
 
 _DATA_CACHE = None
+DATA_DIR = '/home/i/meta/acai/ae_data'
 
-DATA_DIR = os.environ['AE_DATA']
 
+class DataSet:
 
-class DataSet(object):
+    def __init__(self, name, train, test, train_once, height, width, colors, nclass):
+        """
 
-    def __init__(self, name, train, test, train_once, height, width, colors,
-                 nclass):
+        :param name: dataset name
+        :param train: train PrefetchDataset
+        :param test: test PrefetchDataset
+        :param train_once: train_once PrefetchDataset
+        :param height: 32
+        :param width: 32
+        :param colors: 1
+        :param nclass: number of class
+        """
         self.name = name
         self.train = train
         self.train_once = train_once
@@ -50,23 +40,27 @@ class DataSet(object):
 
 
 def get_dataset(dataset_name, params):
-    train, height, width, colors = _DATASETS[dataset_name + '_train'](
-        batch_size=params['batch_size'])
+    """
+
+    :param dataset_name:  mnist32/lines32
+    :param params: {'batch_size':64}
+    :return:
+    """
+    print('DATA_DIR:', DATA_DIR)
+    # train/test:PrefetchDataset
+    train, height, width, colors = _DATASETS[dataset_name + '_train'](batch_size=params['batch_size'])
     test = _DATASETS[dataset_name + '_test'](batch_size=1)[0]
-    train = train.map(lambda v: dict(x=v['x'],
-                                     label=tf.one_hot(v['label'],
-                                                      _NCLASS[dataset_name])))
+    train = train.map(lambda v: dict(x=v['x'], # convert {x:, label:} to one_hot encodding
+                                     label=tf.one_hot(v['label'], _NCLASS[dataset_name])))
     test = test.map(lambda v: dict(x=v['x'],
-                                   label=tf.one_hot(v['label'],
-                                                    _NCLASS[dataset_name])))
+                                   label=tf.one_hot(v['label'], _NCLASS[dataset_name])))
     if dataset_name + '_train_once' in _DATASETS:
         train_once = _DATASETS[dataset_name + '_train_once'](batch_size=1)[0]
         train_once = train_once.map(lambda v: dict(
-            x=v['x'], label=tf.one_hot(v['label'], _NCLASS[dataset_name])))
+                                        x=v['x'], label=tf.one_hot(v['label'], _NCLASS[dataset_name])))
     else:
         train_once = None
-    return DataSet(dataset_name, train, test, train_once, height, width,
-                   colors, _NCLASS[dataset_name])
+    return DataSet(dataset_name, train, test, train_once, height, width, colors, _NCLASS[dataset_name])
 
 
 def draw_line(angle, height, width, w=2.):

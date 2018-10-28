@@ -48,7 +48,7 @@ class DiscreteBottleneck(object):
         if self.hparams.ema:
             self.hparams.ema_count = []
             self.hparams.ema_means = []
-            for i in xrange(hparams.num_residuals):
+            for i in range(hparams.num_residuals):
                 ema_count_i = tf.get_variable(
                     "ema_count_{}".format(i),
                     [self.hparams.num_blocks, self.hparams.block_v_size],
@@ -58,7 +58,7 @@ class DiscreteBottleneck(object):
 
             with tf.colocate_with(self.hparams.means):
                 self.ema_means = []
-                for i in xrange(hparams.num_residuals):
+                for i in range(hparams.num_residuals):
                     ema_means_i = tf.get_variable(
                         "ema_means_{}".format(i),
                         initializer=self.hparams.means.initialized_value()[
@@ -105,7 +105,7 @@ class DiscreteBottleneck(object):
                 [
                     tf.multinomial(-dist[:, i, :],
                                    num_samples=self.hparams.num_samples)
-                    for i in xrange(self.hparams.num_blocks)
+                    for i in range(self.hparams.num_blocks)
                 ],
                 axis=1)
             nearest_hot = tf.one_hot(nearest_idx,

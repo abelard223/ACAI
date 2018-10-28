@@ -1,26 +1,10 @@
-# Copyright 2018 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""Utilities."""
-
 import glob
 import os
 import re
 import time
 import numpy as np
 import tensorflow as tf
-import data
+import lib.data as data
 
 
 class HookReport(tf.train.SessionRunHook):
@@ -39,7 +23,7 @@ class HookReport(tf.train.SessionRunHook):
     _TENSOR_NAMES = {}
 
     def __init__(self, period, batch_size):
-        self.step = 0
+        self.step = 0 # record global step
         self._period = period // batch_size
         self._batch_size = batch_size
         self._sums = np.array([])
@@ -73,7 +57,7 @@ class HookReport(tf.train.SessionRunHook):
         results = run_values.results
         # Note: sometimes the returned step is incorrect (off by one) for some
         # unknown reason.
-        self.step = results[-1] + 1
+        self.step = results[-1] + 1 # global step
         self._count += 1
 
         if not self._sums.size:
@@ -81,20 +65,22 @@ class HookReport(tf.train.SessionRunHook):
         else:
             self._sums += np.array(results[:-1], 'd')
 
+        # print(self.step, self._period, self._step_ratio, self.step // self._period != self._step_ratio)
         if self.step // self._period != self._step_ratio:
             fetches = tf.get_collection(self._REPORT_KEY)
-            stats = '  '.join('%s=% .2f' % (self._TENSOR_NAMES[tensor],
-                                            value / self._count)
-                              for tensor, value in zip(fetches, self._sums))
+            stats = '  '.join('%s:% .2f' % (self._TENSOR_NAMES[tensor], value / self._count)
+                              for tensor, value in zip(fetches, self._sums)
+                              )
             stop = time.time()
-            tf.logging.info('kimg=%d  %s  [%.2f img/s]' %
-                            ((self.step * self._batch_size) >> 10, stats,
-                             self._batch_size * self._count / (
-                                         stop - self._start)))
+            tf.logging.info('Processed:%d  %s  [%.2f img/s]' %(
+                            (self.step * self._batch_size) >> 10, stats,
+                             self._batch_size * self._count / (stop - self._start)
+                                )
+                            )
             self._step_ratio = self.step // self._period
-            self._start = stop
+            self._start = stop # save stop time as start time of next loop
             self._sums *= 0
-            self._count = 0
+            self._count = 0 # clear relative counter
 
     def end(self, session=None):
         del session
@@ -114,6 +100,7 @@ class HookReport(tf.train.SessionRunHook):
             cls._TENSOR_NAMES[tensor] = name
             tf.add_to_collection(cls._REPORT_KEY, tensor)
             tf.summary.scalar(name, tensor)
+        # print(cls._ENABLE, 'log_tensor:', name, tensor)
 
 
 # A dict where you can use a.b for a['b']
@@ -198,28 +185,37 @@ def find_latest_checkpoint(dir):
 
 
 def load_ae(path, target_dataset, batch, all_aes, return_dataset=False):
+    """
+
+    :param path: dataset path
+    :param target_dataset: mnist32/lines32/...
+    :param batch: batchsz
+    :param all_aes: all autoencoders dict
+    :param return_dataset: return with dataset or not
+    :return:
+    """
     r_param = re.compile('(?P<name>[a-zA-Z][a-z_]*)(?P<value>(True)|(False)|(\d+(\.\d+)?(,\d+)*))')
-    folders = [x for x in os.path.abspath(path).split('/') if x]
+    folders = [x for x in os.path.abspath(path).split('/') if x] # [..., 'logs', 'mnist32', 'AEBaseline_depth16_latent2_scales3']
     dataset = folders[-2]
     if dataset != target_dataset:
         tf.logging.log(tf.logging.WARN,
                        'Mismatched datasets between classfier and AE (%s, %s)',
                        target_dataset, dataset)
-    class_name, argpairs = folders[-1].split('_', 1)
-    params = {}
+    class_name, argpairs = folders[-1].split('_', 1) # 'AEBaseline', depth16_latent2_scales3
+    params = {} # {depth:16, scales:3, latent:2}
     for x in r_param.findall(argpairs):
         name, value = x[:2]
         if ',' in value:
             pass
         elif value in ('True', 'False'):
-            value = dict(True=True, False=False)[value]
+            value = value==True
         elif '.' in value:
             value = float(value)
         else:
             value = int(value)
         params[name] = value
-    class_ = all_aes[class_name]
-    dataset = data.get_dataset(dataset, dict(batch_size=batch))
+    class_ = all_aes[class_name] # get clss by name
+    dataset = data.get_dataset(dataset, dict(batch_size=batch)) # get dataset class, including train/test PrefetchDataset
     ae = class_(dataset, '/' + os.path.join(*(folders[:-2])), **params)
     if return_dataset:
         return ae, dataset

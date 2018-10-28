@@ -23,10 +23,10 @@ from lib import data
 import numpy as np
 import scipy.spatial
 
-
 def closest_line(query_lines, metric='cosine'):
     """Compute the distance to, and parameters for, the closest line to each
     line in query_lines.
+
 
     Args:
         - query_lines: Array of lines to compute closest matches for, shape
