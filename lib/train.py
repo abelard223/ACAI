@@ -179,11 +179,11 @@ class AE(CustomModel):
 
 
             summary_hook = tf.train.SummarySaverHook(
-                save_steps=(report_kimg << 8) // batch_size, # save every steps
+                save_steps=(report_kimg << 12) // batch_size, # save every steps
                 output_dir=self.summary_dir,
                 summary_op=tf.summary.merge_all())
             stop_hook = tf.train.StopAtStepHook(last_step=1 + (FLAGS.total_kimg << 10) // batch_size)
-            report_hook = utils.HookReport(report_kimg << 8, batch_size)
+            report_hook = utils.HookReport(report_kimg << 10, batch_size)
 
             run_op = lambda op, value: self.tf_sess.run(op, feed_dict={some_float: value})
 
@@ -195,7 +195,7 @@ class AE(CustomModel):
                     checkpoint_dir=self.checkpoint_dir, # automatically restore from ckpt
                     hooks=[stop_hook],
                     chief_only_hooks=[report_hook, summary_hook], # the hooks are only valid for chief session
-                    save_checkpoint_secs=600, # every 6 minutes save ckpt
+                    save_checkpoint_secs=1000, # every 6 minutes save ckpt
                     save_summaries_steps=10, # every steps to save summary
                     config=config) as sess:
 
@@ -211,7 +211,7 @@ class AE(CustomModel):
 
 
                     # Time to evaluate classification accuracy
-                    if self.cur_nimg % (report_kimg << 8) == 0:
+                    if self.cur_nimg % (report_kimg << 10) == 0:
                         # return with float accuracy
                         accuracy = self.eval_latent_accuracy(ops)
                         # print('eval accuracy:', accuracy, self.cur_nimg)
@@ -364,7 +364,7 @@ class AE(CustomModel):
             pred = self.tf_sess.run(ops.classify_latent, feed_dict={ops.x: images[p:p + batch]})
             accuracy.append((pred == labels[p:p + batch].argmax(1)))
         accuracy = 100 * np.concatenate(accuracy, axis=0).mean()
-        tf.logging.info('Classification based on latent: %.2f, cur_img: %d' % (accuracy, self.cur_nimg >> 10))
+        tf.logging.info('>> Eval acc. on h: %.2f, Processed Images: %dk <<' % (accuracy, self.cur_nimg >> 10))
         return accuracy
 
     def eval_custom_lines32(self, ops, n_interpolations=256,

@@ -247,10 +247,11 @@ class MetaAE(train.AE):
         h = tf.placeholder(tf.float32, [None, h_d, h_d, h_c], name='h')
 
         # meta batch size
-        task_num = 8
-        update_num = 5
-        update_lr = 0.05
-        meta_lr = 1e-3
+        task_num = FLAGS.task_num
+        update_num = FLAGS.update_num
+        update_lr = FLAGS.update_lr
+        meta_lr = FLAGS.meta_lr
+
         # 2 of [b/2, 32, 32, 1]
         x_tasks = tf.split(x, num_or_size_splits=2, axis=0)
         # => 2 of task_num of [b/2/task_num, 32, 1]
@@ -342,7 +343,7 @@ class MetaAE(train.AE):
         xops = classifiers.single_layer_classifier(tf.stop_gradient(encoder_op), l, self.nclass)
         xloss = tf.reduce_mean(xops.loss)
         # record classification loss on latent
-        utils.HookReport.log_tensor(xloss, 'classify_latent')
+        utils.HookReport.log_tensor(xloss, 'classify_latent_loss')
 
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
@@ -390,11 +391,14 @@ if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
 
     flags.DEFINE_string('train_dir', './logs','Folder where to save training data.')
-    flags.DEFINE_float('lr', 0.001, 'Learning rate.')
-    flags.DEFINE_integer('batch', 64, 'Batch size.')
+    flags.DEFINE_float('meta_lr', 0.001, 'meta Learning rate.')
+    flags.DEFINE_float('update_lr', 0.05, 'update Learning rate.')
+    flags.DEFINE_integer('update_num', 5, 'inner update steps')
+    flags.DEFINE_integer('task_num', 8, 'meta-task number')
+    flags.DEFINE_integer('batch', 512, 'Batch size.')
     flags.DEFINE_string('dataset', 'mnist32', 'Data to train on.')
     flags.DEFINE_integer('total_kimg', 1 << 14, 'Training duration in samples.')
-    flags.DEFINE_integer('depth', 8, 'Depth of first for convolution.')
-    flags.DEFINE_integer('latent', 4, 'Latent depth = depth multiplied by latent_width ** 2.')
+    flags.DEFINE_integer('depth', 16, 'Depth of first for convolution.')
+    flags.DEFINE_integer('latent', 8, 'Latent depth = depth multiplied by latent_width ** 2.')
     flags.DEFINE_integer('latent_width', 4, 'Width of the latent space.')
     tf.app.run(main)
