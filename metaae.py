@@ -12,12 +12,15 @@ class MetaAE(train.AE):
     def get_weights(self, c, factor, h_c, name):
         """
 
-        :param c: channel of first conv
+        :param c: channel of first conv output,
         :param factor: enlarge channel layer by layer, on factor
         :param h_c: channel of hidden
         :param name: scope name, we set reuse=tf.AUTO_REUSE
         :return:
         """
+
+        self.c, self.factor, self.h_c = c, factor, h_c
+
         # save all variable
         vars = []
         # kernel size
@@ -35,70 +38,89 @@ class MetaAE(train.AE):
                 vars.append(tf.get_variable('w1', [1, 1, self.colors, c], dtype=tf.float32, initializer=myinit))
                 vars.append(tf.get_variable('b1', [c], dtype=tf.float32, initializer=tf.initializers.zeros()))
 
-                # layer2, factor=0
-                vars.append(tf.get_variable('w2', [3, 3, c, c<<0], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b2', [c], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                vars.append(tf.get_variable('w3', [3, 3, c<<0, c<<0], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b3', [c], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                # x = tf.nn.avg_pool(x, [1, 2, 2, 1], [1, 2, 2, 1], 'VALID')
+                # layer 2 ~ 7
+                for idx in range(factor):
+                    orig_idx = 0 if idx is 0 else (idx - 1)
+                    # layer2, from [b, h>>idx, w>>idx, c>>orig_factor] => [h>>idx>>1, w>>idx>>1, c>>idx]
+                    # intuitively, scale down size and scale up channels
+                    vars.append(tf.get_variable('w'+str(2*idx+2), [3, 3, c<<orig_idx, c<<idx], dtype=tf.float32,
+                                                initializer=myinit))
+                    vars.append(tf.get_variable('b'+str(2*idx+2), [c<<idx], dtype=tf.float32,
+                                                initializer=tf.initializers.zeros()))
+                    vars.append(tf.get_variable('w'+str(2*idx+3), [3, 3, c<<idx, c<<idx], dtype=tf.float32,
+                                                initializer=myinit))
+                    vars.append(tf.get_variable('b'+str(2*idx+3), [c<<idx], dtype=tf.float32,
+                                                initializer=tf.initializers.zeros()))
+                    # x = tf.nn.avg_pool(x, [1, 2, 2, 1], [1, 2, 2, 1], 'VALID')
 
-                # layer3, factor=1
-                vars.append(tf.get_variable('w4', [3, 3, c<<0, c<<1], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b4', [c<<1], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                vars.append(tf.get_variable('w5', [3, 3, c<<1, c<<1], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b5', [c<<1], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                # x = tf.nn.avg_pool(x, [1, 2, 2, 1], [1, 2, 2, 1], 'VALID')
 
+                # layer counter, layer 8
+                idx =  2 * factor + 2
+                orig_factor = 0 if factor is 0 else factor - 1
+                vars.append(tf.get_variable('w'+str(idx), [3, 3, c<<orig_factor, c<<orig_factor], dtype=tf.float32,
+                                            initializer=myinit))
+                vars.append(tf.get_variable('b'+str(idx), [c<<orig_factor], dtype=tf.float32,
+                                            initializer=tf.initializers.zeros()))
+                idx += 1
 
-                # layer4, factor=2
-                vars.append(tf.get_variable('w6', [3, 3, c<<1, c<<2], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b6', [c<<2], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                vars.append(tf.get_variable('w7', [3, 3, c<<2, c<<2], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b7', [c<<2], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                # x = tf.nn.avg_pool(x, [1, 2, 2, 1], [1, 2, 2, 1], 'VALID')
+                # layer 9
+                vars.append(tf.get_variable('w'+str(idx), [3, 3, c<<orig_factor, h_c], dtype=tf.float32,
+                                            initializer=myinit))
+                vars.append(tf.get_variable('b'+str(idx), [h_c], dtype=tf.float32,
+                                            initializer=tf.initializers.zeros()))
 
-                # layer5
-                vars.append(tf.get_variable('w8', [3, 3, c<<2, c<<3], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b8', [c<<3], dtype=tf.float32, initializer=tf.initializers.zeros()))
-
-                # layer6
-                vars.append(tf.get_variable('w9', [3, 3, c<<3, h_c], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b9', [h_c], dtype=tf.float32, initializer=tf.initializers.zeros()))
+                # record the number of encoder layer
+                self.encoder_layer_num = idx
+                print('encoder:', self.encoder_layer_num, self.encoder_var_num)
 
         elif name is 'decoder':
             with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
-                # layer1
-                vars.append(tf.get_variable('w1', [3, 3, h_c, c << 2], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b1', [c << 2], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                vars.append(tf.get_variable('w2', [3, 3, c << 2, c << 2], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b2', [c << 2], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                # tf.batch_to_space(tf.tile(x, [n ** 2, 1, 1, 1]), [[0, 0], [0, 0]], n)
+                layer_counter = 1
+                for idx in range(factor-1, -1, -1):
+                    # layer1
+                    orig_c = h_c if idx == (factor-1) else (c<<(idx+1)) # deal with the first layer
+                    vars.append(tf.get_variable('w'+str(layer_counter), [3, 3, orig_c, c << idx], dtype=tf.float32,
+                                                initializer=myinit))
+                    vars.append(tf.get_variable('b'+str(layer_counter), [c << idx], dtype=tf.float32,
+                                                initializer=tf.initializers.zeros()))
+                    vars.append(tf.get_variable('w'+str(layer_counter+1), [3, 3, c << idx, c << idx], dtype=tf.float32,
+                                                initializer=myinit))
+                    vars.append(tf.get_variable('b'+str(layer_counter+1), [c << idx], dtype=tf.float32,
+                                                initializer=tf.initializers.zeros()))
+                    # tf.batch_to_space(tf.tile(x, [n ** 2, 1, 1, 1]), [[0, 0], [0, 0]], n)
+                    layer_counter +=2
 
-                # layer2
-                vars.append(tf.get_variable('w3', [3, 3, c << 2, c << 1], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b3', [c << 1], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                vars.append(tf.get_variable('w4', [3, 3, c << 1, c << 1], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b4', [c << 1], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                # tf.batch_to_space(tf.tile(x, [n ** 2, 1, 1, 1]), [[0, 0], [0, 0]], n)
+                layer_counter = 2 * factor + 1
+                # layer7
+                vars.append(tf.get_variable('w'+str(layer_counter), [3, 3, c, c], dtype=tf.float32,
+                                            initializer=myinit))
+                vars.append(tf.get_variable('b'+str(layer_counter), [c], dtype=tf.float32,
+                                            initializer=tf.initializers.zeros()))
+                layer_counter += 1
 
-                # layer3
-                vars.append(tf.get_variable('w5', [3, 3, c << 1, c << 0], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b5', [c << 0], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                vars.append(tf.get_variable('w6', [3, 3, c << 0, c << 0], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b6', [c << 0], dtype=tf.float32, initializer=tf.initializers.zeros()))
-                # tf.batch_to_space(tf.tile(x, [n ** 2, 1, 1, 1]), [[0, 0], [0, 0]], n)
+                # layer8
+                vars.append(tf.get_variable('w'+str(layer_counter), [3, 3, c, self.colors], dtype=tf.float32,
+                                            initializer=myinit))
+                vars.append(tf.get_variable('b'+str(layer_counter), [self.colors], dtype=tf.float32,
+                                            initializer=tf.initializers.zeros()))
 
-                # layer4
-                vars.append(tf.get_variable('w7', [3, 3, c, c], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b7', [c], dtype=tf.float32, initializer=tf.initializers.zeros()))
+                self.decoder_layer_num = layer_counter
+                print('decoder:', self.decoder_layer_num, self.decoder_var_num)
 
-                # layer5
-                vars.append(tf.get_variable('w8', [3, 3, c, self.colors], dtype=tf.float32, initializer=myinit))
-                vars.append(tf.get_variable('b8', [self.colors], dtype=tf.float32, initializer=tf.initializers.zeros()))
         else:
             raise NotImplementedError
 
+        for p in vars:
+            print(p)
         return vars
+
+    @property
+    def encoder_var_num(self):
+        return 2 * self.encoder_layer_num
+
+    @property
+    def decoder_var_num(self):
+        return 2* self.decoder_layer_num
 
     def forward_encoder(self, x, vars):
         """
@@ -114,7 +136,7 @@ class MetaAE(train.AE):
         idx += 2
 
         # layer2/3/4, factor=0,1,2
-        for idx in range(2, 14, 4): # step=4
+        for idx in range(2, 2 + self.factor * 4, 4): # step=4
             op = tf.nn.conv2d(op, vars[idx], strides=(1,1,1,1), padding='SAME')
             op = tf.nn.bias_add(op, vars[idx + 1])
             op = tf.nn.leaky_relu(op)
@@ -126,8 +148,11 @@ class MetaAE(train.AE):
 
             op = tf.nn.avg_pool(op, [1, 2, 2, 1], [1, 2, 2, 1], 'VALID')
 
+
+        # update variable pointer
+        idx = 2 + self.factor * 4
+
         # layer5
-        idx = 14
         op = tf.nn.conv2d(op, vars[idx], strides=(1,1,1,1), padding='SAME')
         op = tf.nn.bias_add(op, vars[idx + 1])
         op = tf.nn.leaky_relu(op)
@@ -154,7 +179,7 @@ class MetaAE(train.AE):
 
         op = h
         # layer1/2/3, factor=2,1,0
-        for idx in range(0, 12, 4): # step=4
+        for idx in range(0, self.factor * 4, 4): # step=4
             op = tf.nn.conv2d(op, vars[idx], strides=(1,1,1,1), padding='SAME')
             # print(vars[idx].name, vars[idx+1].name)
             op = tf.nn.bias_add(op, vars[idx + 1])
@@ -167,7 +192,9 @@ class MetaAE(train.AE):
 
             op = tf.batch_to_space(tf.tile(op, [2 ** 2, 1, 1, 1]), [[0, 0], [0, 0]], 2)
 
-        idx = 12
+        # update variable pointer
+        idx = self.factor * 4
+
         # layer4
         op = tf.nn.conv2d(op, vars[idx + 0], strides=(1,1,1,1), padding='SAME')
         op = tf.nn.bias_add(op, vars[idx + 1])
@@ -188,10 +215,11 @@ class MetaAE(train.AE):
         :param x:
         :return:
         """
-        assert len(vars) is (18+16)
+        # every layer contains 2 variable generally
+        assert len(vars) == (self.encoder_var_num+self.decoder_var_num)
 
-        vars_encoder = vars[:18]
-        vars_decoder = vars[18:]
+        vars_encoder = vars[:self.encoder_var_num]
+        vars_decoder = vars[self.encoder_var_num:]
 
         op = self.forward_encoder(x, vars_encoder)
         op = self.forward_decoder(op, vars_decoder)
@@ -304,12 +332,12 @@ class MetaAE(train.AE):
         for i in range(update_num):
             # print(losses_qry[i])
             utils.HookReport.log_tensor(self.losses_qry[i], 'loss_qry%d'%i)
-            utils.HookReport.log_tensor(tf.sqrt(self.losses_qry[i]) * 127.5, 'rmse%d'%i)
+            # utils.HookReport.log_tensor(tf.sqrt(self.losses_qry[i]) * 127.5, 'rmse%d'%i)
 
         # we only use encode to acquire representation and wont use classification to backprop encoder
         # hence we will stop_gradient(encoder)
-        encoder_op = self.forward_encoder(x, vars[:18])
-        decoder_op = self.forward_decoder(h, vars[18:])
+        encoder_op = self.forward_encoder(x, vars[:self.encoder_var_num])
+        decoder_op = self.forward_decoder(h, vars[self.encoder_var_num:])
         ae_op = self.forward_ae(x, vars)
         xops = classifiers.single_layer_classifier(tf.stop_gradient(encoder_op), l, self.nclass)
         xloss = tf.reduce_mean(xops.loss)
@@ -366,7 +394,7 @@ if __name__ == '__main__':
     flags.DEFINE_integer('batch', 64, 'Batch size.')
     flags.DEFINE_string('dataset', 'mnist32', 'Data to train on.')
     flags.DEFINE_integer('total_kimg', 1 << 14, 'Training duration in samples.')
-    flags.DEFINE_integer('depth', 16, 'Depth of first for convolution.')
-    flags.DEFINE_integer('latent', 8, 'Latent depth = depth multiplied by latent_width ** 2.')
+    flags.DEFINE_integer('depth', 8, 'Depth of first for convolution.')
+    flags.DEFINE_integer('latent', 4, 'Latent depth = depth multiplied by latent_width ** 2.')
     flags.DEFINE_integer('latent_width', 4, 'Width of the latent space.')
     tf.app.run(main)

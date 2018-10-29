@@ -12,7 +12,7 @@ import  tensorflow as tf
 
 
 _DATA_CACHE = None
-DATA_DIR = '/home/i/meta/acai/ae_data'
+DATA_DIR = '/home/i/meta/ACAI/ae_data'
 
 
 class DataSet:
