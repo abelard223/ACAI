@@ -19,6 +19,7 @@ class VAE(train.AE):
         :param beta: beta for KL divergence
         :return:
         """
+        # x is rescaled to [-1, 1] in data argumentation phase
         x = tf.placeholder(tf.float32, [None, self.height, self.width, self.colors], 'x')
         l = tf.placeholder(tf.float32, [None, self.nclass], 'label')
         # [32>>3, 32>>3, latent_depth]
@@ -33,7 +34,7 @@ class VAE(train.AE):
         # [b, 4, 4, 16]
         encode = encoder(x)
 
-        with tf.variable_scope('vae_mid'):
+        with tf.variable_scope('vae_u_std'):
             encode_shape = tf.shape(encode)
             # [b, 16*16]
             encode_flat = tf.layers.flatten(encode)
@@ -61,28 +62,36 @@ class VAE(train.AE):
         p_x_given_z = tf.distributions.Bernoulli(logits=p_x_given_z_logits)
 
         # for VAE, h stands for sampled value with Guassian(u, std^2)
+        # -1~1
         ae = 2*tf.nn.sigmoid(p_x_given_z_logits) - 1
         decode = 2*tf.nn.sigmoid(decoder(h)) - 1
 
+        # compute kl divergence
+        # there is a closed form of KL between two Guassian distributions
+        # please refer to here:
+        # https://stats.stackexchange.com/questions/7440/kl-divergence-between-two-univariate-gaussians
         loss_kl = 0.5*tf.reduce_sum(-log_q_sigma_sq - 1 + tf.exp(log_q_sigma_sq) + q_mu**2)
         loss_kl = loss_kl/tf.to_float(tf.shape(x)[0])
 
+        # rescale to [0, 1], convenient for Bernoulli distribution
         x_bernoulli = 0.5*(x + 1)
+        # can use reconstruction or use density estimation
         loss_ll = tf.reduce_sum(p_x_given_z.log_prob(x_bernoulli))
         loss_ll = loss_ll/tf.to_float(tf.shape(x)[0])
 
+        #
         elbo = loss_ll - beta*loss_kl
 
-        utils.HookReport.log_tensor(loss_kl, 'kldivergence')
-        utils.HookReport.log_tensor(loss_ll, 'loglikehood')
+        utils.HookReport.log_tensor(loss_kl, 'kl_divergence')
+        utils.HookReport.log_tensor(loss_ll, 'log_likelihood')
         utils.HookReport.log_tensor(elbo, 'elbo')
 
-        xops = classifiers.single_layer_classifier(tf.stop_gradient(encode), l, self.nclass)
+        xops = classifiers.single_layer_classifier(tf.stop_gradient(encode), l, self.nclass, scope='classifier')
         xloss = tf.reduce_mean(xops.loss)
         utils.HookReport.log_tensor(xloss, 'classify_loss_on_h')
 
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        ae_vars = tf.global_variables('vae_')
+        ae_vars = tf.global_variables('vae_enc') + tf.global_variables('vae_dec') + tf.global_variables('vae_u_std')
         xl_vars = tf.global_variables('classifier')
         with tf.control_dependencies(update_ops):
             train_ae = tf.train.AdamOptimizer(FLAGS.lr).minimize(- elbo, var_list=ae_vars)
