@@ -374,8 +374,8 @@ class MetaAE(train.AE):
 def main(argv):
     print(FLAGS.flag_values_dict())
 
-    batch = FLAGS.batch
-    dataset = data.get_dataset(FLAGS.dataset, dict(batch_size=batch))
+    batchsz = FLAGS.batch
+    dataset = data.get_dataset(FLAGS.dataset, dict(batch_size=batchsz))
     # latent: [?, 4, 4, 16]
     scales = int(round(math.log(dataset.width // FLAGS.latent_width, 2)))
     model = MetaAE(
