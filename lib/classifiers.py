@@ -18,13 +18,13 @@ class ClassifierOps(object):
         self.train_op = None
 
 
-def single_layer_classifier(h, l, nclass, scope='single_layer_classifier', smoothing=None):
+def single_layer_classifier(h, l, nclass, scope='classifier', smoothing=None):
     """
 
     :param h: hidden placeholder
     :param l: label placeholder
     :param nclass: number of class
-    :param scope:
+    :param scope: scope name for this module
     :param smoothing:
     :return:
     """

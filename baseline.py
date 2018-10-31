@@ -17,7 +17,7 @@ class AEBaseline(train.AE):
         :param scales:
         :return:
         """
-        print('self.nclass', self.nclass)
+        print('self.nclass:', self.nclass)
         # [b, 32, 32, 1]
         x = tf.placeholder(tf.float32, [None, self.height, self.width, self.colors], 'x')
         # [b, 10]
@@ -34,17 +34,18 @@ class AEBaseline(train.AE):
         loss = tf.losses.mean_squared_error(x, ae)
 
         utils.HookReport.log_tensor(loss, 'loss')
-        utils.HookReport.log_tensor(tf.sqrt(loss) * 127.5, 'rmse')
+        # utils.HookReport.log_tensor(tf.sqrt(loss) * 127.5, 'rmse')
 
         # we only use encode to acquire representation and wont use classification to backprop encoder
         # hence we will stop_gradient(encoder)
         xops = classifiers.single_layer_classifier(tf.stop_gradient(encode), l, self.nclass)
         xloss = tf.reduce_mean(xops.loss)
         # record classification loss on latent
-        utils.HookReport.log_tensor(xloss, 'classify_latent')
+        utils.HookReport.log_tensor(xloss, 'classify_loss_on_h')
 
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
+            # since xloss is isolated from loss, here we simply write two optimizers as one optimizer
             train_op = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss + xloss, tf.train.get_global_step())
 
         ops = train.AEOps(x, h, l, encode, decode, ae, train_op, classify_latent=xops.output)
@@ -85,6 +86,7 @@ if __name__ == '__main__':
     import  os
 
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    tf.logging.set_verbosity(tf.logging.INFO)
 
     flags.DEFINE_string('train_dir', './logs','Folder where to save training data.')
     flags.DEFINE_float('lr', 0.0001, 'Learning rate.')

@@ -4,7 +4,6 @@ from    absl import flags
 import  tensorflow as tf
 from    lib import data, layers, train, utils, classifiers
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 FLAGS = flags.FLAGS
@@ -12,43 +11,56 @@ FLAGS = flags.FLAGS
 class VAE(train.AE):
 
     def model(self, latent, depth, scales, beta):
+        """
+
+        :param latent: hidden/latent channel number
+        :param depth: channel number for factor
+        :param scales: factor
+        :param beta: beta for KL divergence
+        :return:
+        """
         x = tf.placeholder(tf.float32, [None, self.height, self.width, self.colors], 'x')
         l = tf.placeholder(tf.float32, [None, self.nclass], 'label')
         # [32>>3, 32>>3, latent_depth]
         h = tf.placeholder(tf.float32, [None, self.height >> scales, self.width >> scales, latent], 'h')
 
         def encoder(x):
-            return layers.encoder(x, scales, depth, latent, 'ae_enc')
+            return layers.encoder(x, scales, depth, latent, 'vae_enc')
 
         def decoder(h):
-            return layers.decoder(h, scales, depth, self.colors, 'ae_dec')
+            return layers.decoder(h, scales, depth, self.colors, 'vae_dec')
 
         # [b, 4, 4, 16]
         encode = encoder(x)
 
-        with tf.variable_scope('ae_latent'):
+        with tf.variable_scope('vae_mid'):
             encode_shape = tf.shape(encode)
             # [b, 16*16]
             encode_flat = tf.layers.flatten(encode)
             # not run-time shape, 16*16
             latent_dim = encode_flat.get_shape()[-1]
             # dense:[16*16, 16*16]
+            # mean
             q_mu = tf.layers.dense(encode_flat, latent_dim)
             # dense: [16*16, 16*16]
             log_q_sigma_sq = tf.layers.dense(encode_flat, latent_dim)
 
-        # [b, 16*16]
+        # [b, 16*16], log square
+        # variance
+        # => [b, 4*4*16]
         q_sigma = tf.sqrt(tf.exp(log_q_sigma_sq))
 
+        # N(u, std^2)
         q_z = tf.distributions.Normal(loc=q_mu, scale=q_sigma)
         q_z_sample = q_z.sample()
-        # [b, 4, 4, 16]
+        # [b, 4*4*16] => [b, 4, 4, 16]
         q_z_sample_reshaped = tf.reshape(q_z_sample, encode_shape)
         # [b, 32, 32, 1]
         p_x_given_z_logits = decoder(q_z_sample_reshaped)
-        #
+        # [b, 32, 32, 1]
         p_x_given_z = tf.distributions.Bernoulli(logits=p_x_given_z_logits)
 
+        # for VAE, h stands for sampled value with Guassian(u, std^2)
         ae = 2*tf.nn.sigmoid(p_x_given_z_logits) - 1
         decode = 2*tf.nn.sigmoid(decoder(h)) - 1
 
@@ -61,20 +73,20 @@ class VAE(train.AE):
 
         elbo = loss_ll - beta*loss_kl
 
-        utils.HookReport.log_tensor(loss_kl, 'loss_kl')
-        utils.HookReport.log_tensor(loss_ll, 'loss_ll')
+        utils.HookReport.log_tensor(loss_kl, 'kldivergence')
+        utils.HookReport.log_tensor(loss_ll, 'loglikehood')
         utils.HookReport.log_tensor(elbo, 'elbo')
 
         xops = classifiers.single_layer_classifier(tf.stop_gradient(encode), l, self.nclass)
         xloss = tf.reduce_mean(xops.loss)
-        utils.HookReport.log_tensor(xloss, 'classify_latent')
+        utils.HookReport.log_tensor(xloss, 'classify_loss_on_h')
 
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        ae_vars = tf.global_variables('ae_')
-        xl_vars = tf.global_variables('single_layer_classifier')
+        ae_vars = tf.global_variables('vae_')
+        xl_vars = tf.global_variables('classifier')
         with tf.control_dependencies(update_ops):
-            train_ae = tf.train.AdamOptimizer(FLAGS.lr).minimize( -elbo, var_list=ae_vars)
-            train_xl = tf.train.AdamOptimizer(FLAGS.lr).minimize( xloss, tf.train.get_global_step(), var_list=xl_vars)
+            train_ae = tf.train.AdamOptimizer(FLAGS.lr).minimize(- elbo, var_list=ae_vars)
+            train_xl = tf.train.AdamOptimizer(FLAGS.lr).minimize(xloss, tf.train.get_global_step(), var_list=xl_vars)
 
         ops = train.AEOps(x, h, l, q_z_sample_reshaped, decode, ae, tf.group(train_ae, train_xl),
                           classify_latent=xops.output)
@@ -114,7 +126,7 @@ if __name__ == '__main__':
     flags.DEFINE_string('train_dir', './logs', 'Folder where to save training data.')
     flags.DEFINE_float('lr', 0.0001, 'Learning rate.')
     flags.DEFINE_integer('batch', 64, 'Batch size.')
-    flags.DEFINE_string('dataset', 'lines32', 'Data to train on.')
+    flags.DEFINE_string('dataset', 'mnist32', 'Data to train on.')
     flags.DEFINE_integer('total_kimg', 1 << 14, 'Training duration in samples.')
 
     flags.DEFINE_integer('depth', 64, 'Depth of first for convolution.')
@@ -122,6 +134,6 @@ if __name__ == '__main__':
     flags.DEFINE_integer('latent_width', 4, 'Width of the latent space.')
     flags.DEFINE_float('beta', 1.0, 'ELBO KL term scale.')
 
-
-
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    tf.logging.set_verbosity(tf.logging.INFO)
     app.run(main)

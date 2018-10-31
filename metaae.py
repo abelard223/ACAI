@@ -1,5 +1,5 @@
 import  tensorflow as tf
-from    lib import train, utils, classifiers, data
+from    lib import train, utils, classifiers, data, layers
 import  math
 from    tensorflow import flags
 
@@ -25,7 +25,7 @@ class MetaAE(train.AE):
         vars = []
         # kernel size
         k = 3
-        myinit = tf.contrib.layers.xavier_initializer()
+        myinit = layers.MyInit(0.2) # tf.contrib.layers.xavier_initializer()
 
         # print(factor, type(factor))
         # assert factor is 3 will ERROR!!!
@@ -203,6 +203,7 @@ class MetaAE(train.AE):
         # layer5
         op = tf.nn.conv2d(op, vars[idx + 0], strides=(1,1,1,1), padding='SAME')
         op = tf.nn.bias_add(op, vars[idx + 1])
+        # op = tf.nn.sigmoid(op)
         idx += 2
 
         assert idx == len(vars)
@@ -251,6 +252,7 @@ class MetaAE(train.AE):
         update_num = FLAGS.update_num
         update_lr = FLAGS.update_lr
         meta_lr = FLAGS.meta_lr
+        print('tasks:', task_num, 'update_lr', update_lr, 'update_num', update_num, 'meta lr:', meta_lr)
 
         # 2 of [b/2, 32, 32, 1]
         x_tasks = tf.split(x, num_or_size_splits=2, axis=0)
@@ -337,13 +339,14 @@ class MetaAE(train.AE):
 
         # we only use encode to acquire representation and wont use classification to backprop encoder
         # hence we will stop_gradient(encoder)
-        encoder_op = self.forward_encoder(x, vars[:self.encoder_var_num])
-        decoder_op = self.forward_decoder(h, vars[self.encoder_var_num:])
+        encoder_op = self.forward_encoder(x, vars[:self.encoder_var_num]) # reuse
+        decoder_op = self.forward_decoder(h, vars[self.encoder_var_num:]) # reuse
         ae_op = self.forward_ae(x, vars)
+        # this op only optimize classifier, hence stop_gradient after encoder_op
         xops = classifiers.single_layer_classifier(tf.stop_gradient(encoder_op), l, self.nclass)
         xloss = tf.reduce_mean(xops.loss)
         # record classification loss on latent
-        utils.HookReport.log_tensor(xloss, 'classify_latent_loss')
+        utils.HookReport.log_tensor(xloss, 'classify_h_loss')
 
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
@@ -395,7 +398,7 @@ if __name__ == '__main__':
     flags.DEFINE_float('update_lr', 0.05, 'update Learning rate.')
     flags.DEFINE_integer('update_num', 5, 'inner update steps')
     flags.DEFINE_integer('task_num', 8, 'meta-task number')
-    flags.DEFINE_integer('batch', 512, 'Batch size.')
+    flags.DEFINE_integer('batch', 64, 'Batch size.')
     flags.DEFINE_string('dataset', 'mnist32', 'Data to train on.')
     flags.DEFINE_integer('total_kimg', 1 << 14, 'Training duration in samples.')
     flags.DEFINE_integer('depth', 16, 'Depth of first for convolution.')

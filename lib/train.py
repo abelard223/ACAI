@@ -179,7 +179,7 @@ class AE(CustomModel):
 
 
             summary_hook = tf.train.SummarySaverHook(
-                save_steps=(report_kimg << 12) // batch_size, # save every steps
+                save_steps=(report_kimg << 9) // batch_size, # save every steps
                 output_dir=self.summary_dir,
                 summary_op=tf.summary.merge_all())
             stop_hook = tf.train.StopAtStepHook(last_step=1 + (FLAGS.total_kimg << 10) // batch_size)
@@ -196,7 +196,7 @@ class AE(CustomModel):
                     hooks=[stop_hook],
                     chief_only_hooks=[report_hook, summary_hook], # the hooks are only valid for chief session
                     save_checkpoint_secs=1000, # every 6 minutes save ckpt
-                    save_summaries_steps=10, # every steps to save summary
+                    save_summaries_steps=0, # every steps to save summary
                     config=config) as sess:
 
                 self.sess = sess

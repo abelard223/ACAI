@@ -33,10 +33,10 @@ class DataSet:
         self.train = train
         self.train_once = train_once
         self.test = test
-        self.height = height
-        self.width = width
-        self.colors = colors
-        self.nclass = nclass
+        self.height = height # 32
+        self.width = width # 32
+        self.colors = colors # 1
+        self.nclass = nclass # 5
 
 
 def get_dataset(dataset_name, params):
@@ -48,18 +48,22 @@ def get_dataset(dataset_name, params):
     """
     print('DATA_DIR:', DATA_DIR)
     # train/test:PrefetchDataset
+    # _DATASETS[dataset_name + '_train'] will return with a function
     train, height, width, colors = _DATASETS[dataset_name + '_train'](batch_size=params['batch_size'])
     test = _DATASETS[dataset_name + '_test'](batch_size=1)[0]
+    # convert label to one_hot encoding
     train = train.map(lambda v: dict(x=v['x'], # convert {x:, label:} to one_hot encodding
                                      label=tf.one_hot(v['label'], _NCLASS[dataset_name])))
     test = test.map(lambda v: dict(x=v['x'],
                                    label=tf.one_hot(v['label'], _NCLASS[dataset_name])))
+    # generate train_once PrefetchDataset
     if dataset_name + '_train_once' in _DATASETS:
         train_once = _DATASETS[dataset_name + '_train_once'](batch_size=1)[0]
         train_once = train_once.map(lambda v: dict(
                                         x=v['x'], label=tf.one_hot(v['label'], _NCLASS[dataset_name])))
     else:
         train_once = None
+
     return DataSet(dataset_name, train, test, train_once, height, width, colors, _NCLASS[dataset_name])
 
 
@@ -131,6 +135,7 @@ def _parser_all(serialized_example):
         features={'image': tf.FixedLenFeature([], tf.string),
                   'label': tf.FixedLenFeature([], tf.int64)})
     image = tf.image.decode_image(features['image'])
+    # convert data from [0, 255] => [-1, 1]
     image = tf.cast(image, tf.float32) * (2.0 / 255) - 1.0
     label = features['label']
     return image, label
