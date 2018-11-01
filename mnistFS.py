@@ -142,7 +142,7 @@ class MnistFS:
 def main():
     import time
 
-    mnist = MnistFS('ae_data/mnist')
+    mnist = MnistFS('ae_data/mnist', mode='test')
 
     row = 5
     column = 16
