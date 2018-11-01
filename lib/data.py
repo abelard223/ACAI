@@ -134,6 +134,7 @@ def _parser_all(serialized_example):
         serialized_example,
         features={'image': tf.FixedLenFeature([], tf.string),
                   'label': tf.FixedLenFeature([], tf.int64)})
+
     image = tf.image.decode_image(features['image'])
     # convert data from [0, 255] => [-1, 1]
     image = tf.cast(image, tf.float32) * (2.0 / 255) - 1.0
@@ -154,7 +155,8 @@ def input_fn_record(record_parse_fn,
                     random_shift_x=0,
                     random_shift_y=0,
                     limit=None):
-    """Creates a Dataset pipeline for tfrecord files.
+    """
+    Creates a Dataset pipeline for tfrecord files.
 
     Args:
     record_parse_fn: function, used to parse a record entry.

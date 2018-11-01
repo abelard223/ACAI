@@ -375,6 +375,7 @@ def main(argv):
     print(FLAGS.flag_values_dict())
 
     batchsz = FLAGS.batch
+    # given dataset name and batchsz encapsuled as a dict
     dataset = data.get_dataset(FLAGS.dataset, dict(batch_size=batchsz))
     # latent: [?, 4, 4, 16]
     scales = int(round(math.log(dataset.width // FLAGS.latent_width, 2)))
