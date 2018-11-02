@@ -192,7 +192,7 @@ class FAUL(CustomModel):
                                 output_dir=self.summary_dir,
                                 summary_op=tf.summary.merge_all())
             stop_hook = tf.train.StopAtStepHook(last_step=1 + (FLAGS.total_kimg << 10) // batchsz)
-            report_hook = utils.HookReport(report_kimg << 10, batchsz)
+            report_hook = utils.HookReport(report_kimg << 8, batchsz)
 
             init_my_summary_op = lambda op, value: self.tf_sess.run(op, feed_dict={some_float: value})
 
@@ -218,6 +218,7 @@ class FAUL(CustomModel):
                     # run data_in ops first and then run ops.train_op
 
                     spt_x, spt_y, qry_x, qry_y = self.train_data.get_batch(batchsz, use_episode=True)
+
                     sess.run(ops['meta_op'], feed_dict={
                         ops['train_spt_x']: spt_x,
                         ops['train_spt_y']: spt_y,
@@ -232,6 +233,7 @@ class FAUL(CustomModel):
 
                     # Time to evaluate classification accuracy
                     if self.cur_nimg % (report_kimg << 10) == 0:
+                        print('eval...')
                         # return with float accuracy
                         accuracy = self.eval_latent_accuracy(ops)
                         # print('eval accuracy:', accuracy, self.cur_nimg)
@@ -247,7 +249,7 @@ class FAUL(CustomModel):
         :return:
         """
 
-        batchsz = FLAGS.batch
+        batchsz = FLAGS.batchsz
         correct = []
         totoal_counter = 0
 

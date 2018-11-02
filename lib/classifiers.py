@@ -37,8 +37,9 @@ def single_layer_classifier(h, l, nclass, scope='classifier', reuse=False, smoot
         logits = tf.layers.dense(h0, nclass)
         # => [b]
         output = tf.argmax(logits, 1)
-        if smoothing:
-            l -= abs(smoothing) * (l - 1. / nclass)
+        # if smoothing:
+        #     l -= abs(smoothing) * (l - 1. / nclass)
+        l = tf.one_hot(tf.to_int32(l), nclass)
         loss = tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=l)
 
     return ClassifierOps(loss=loss, output=output)

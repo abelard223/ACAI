@@ -311,8 +311,8 @@ class MetaAE(train.FAUL):
             # [b, 10]
             # trian_spt_y and train_qry_y will NOT be used since its unsupervised training
             # but we will use test_spt_y and test_qry_y to get performance benchmark.
-            train_spt_y = tf.placeholder(tf.float32, [task_num, n_way * k_spt, self.nclass], name='train_spt_y')
-            train_qry_y = tf.placeholder(tf.float32, [task_num, n_way * k_qry, self.nclass], name='train_qry_y')
+            train_spt_y = tf.placeholder(tf.float32, [task_num, n_way * k_spt], name='train_spt_y')
+            train_qry_y = tf.placeholder(tf.float32, [task_num, n_way * k_qry], name='train_qry_y')
 
             out_dtype = [tf.float32, [tf.float32] * update_num, tf.float32, [tf.float32] * update_num]
             # out_dtype.extend([tf.float32, [tf.float32]*update_num])
@@ -342,14 +342,14 @@ class MetaAE(train.FAUL):
                 meta_op = tf.group([meta_op])
 
         #=========================================================
-        # [1, 5, 32, 32, 1] [1, 75, 32, 32, 1]
+        # [5, 32, 32, 1] [75, 32, 32, 1]
         test_spt_x = tf.placeholder(tf.float32, [n_way * k_spt, self.height, self.width, self.colors],
                                     name='test_spt_x')
         test_qry_x = tf.placeholder(tf.float32, [n_way * k_qry, self.height, self.width, self.colors],
                                     name='test_qry_x')
-        # [b, 10]
-        test_spt_y = tf.placeholder(tf.float32, [n_way * k_spt, self.nclass], name='test_spt_y')
-        test_qry_y = tf.placeholder(tf.float32, [n_way * k_qry, self.nclass], name='test_qry_y')
+        # []
+        test_spt_y = tf.placeholder(tf.float32, [n_way * k_spt], name='test_spt_y')
+        test_qry_y = tf.placeholder(tf.float32, [n_way * k_qry], name='test_qry_y')
 
         # [b, 4, 4, 16]
         h = tf.placeholder(tf.float32, [None, h_d, h_d, h_c], name='h')
