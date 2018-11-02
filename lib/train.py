@@ -166,6 +166,7 @@ class FAUL(CustomModel):
         :return:
         """
         batch_size = FLAGS.batch
+
         if self.train_graph is None:
             self.train_graph = tf.Graph()
 
@@ -215,10 +216,10 @@ class FAUL(CustomModel):
 
                     spt_x, spt_y, qry_x, qry_y = self.train_data.get_batch(batch_size, use_episode=True)
                     sess.run(ops['meta_op'], feed_dict={
-                        ops['train_spt_x']:spt_x,
-                        ops['train_spt_y']:spt_y,
-                        ops['train_qry_x']:qry_x,
-                        ops['train_qry_y']:qry_y
+                        ops['train_spt_x']: spt_x,
+                        ops['train_spt_y']: spt_y,
+                        ops['train_qry_x']: qry_x,
+                        ops['train_qry_y']: qry_y
                     })
 
                     # MonitoredTrainingSession has an underlying session object: tf_session
@@ -233,6 +234,9 @@ class FAUL(CustomModel):
                         # print('eval accuracy:', accuracy, self.cur_nimg)
                         # self.tf_sess.run(latent_accuracy_op, feed_dict={some_float: accuracy})
                         init_my_summary_op(latent_accuracy_op, accuracy)
+
+
+
 
 
     def make_sample_grid_and_save(self, ops, batch_size=16, random=4, interpolation=16, height=16, save_to_disk=True):
@@ -335,44 +339,35 @@ class FAUL(CustomModel):
 
         return image_random, image_interpolation, image_interpolation_slerp, image_samples
 
-    def eval_latent_accuracy(self, ops, batches=None):
+    def eval_latent_accuracy(self, ops):
         """
         Eval MLP classification accuracy based on latent representation
         :param ops:
         :param batches:
         :return:
         """
-        if ops.classify_latent is None:
-            return 0
 
-        # TODO: need fine-tuning before testing
-        return 0
+        batchsz = FLAGS.batch
+        correct = []
+        totoal_counter = 0
 
-        with tf.Graph().as_default():
-            data_in = self.test_data.make_one_shot_iterator().get_next()
-            with tf.Session() as sess_new:
-                images = []
-                labels = []
-                while True:
-                    try:
-                        # get new data
-                        payload = sess_new.run(data_in)
-                        images.append(payload['x'])
-                        assert images[-1].shape[0] == 1 or batches is not None
-                        labels.append(payload['label'])
-                        if len(images) == batches:
-                            break
-                    except tf.errors.OutOfRangeError:
-                        break
-        #
-        images = np.concatenate(images, axis=0)
-        labels = np.concatenate(labels, axis=0)
-        accuracy = []
-        batch = FLAGS.batch
-        for p in range(0, images.shape[0], FLAGS.batch):
-            pred = self.tf_sess.run(ops.classify_latent, feed_dict={ops.x: images[p:p + batch]})
-            accuracy.append((pred == labels[p:p + batch].argmax(1)))
-        accuracy = 100 * np.concatenate(accuracy, axis=0).mean()
+        while True:
+            spt_x, spt_y, qry_x, qry_y = self.test_data.get_batch(batchsz, use_episode=True)
+            pretrain_loss, qry_pred = self.tf_sess.run([ops['pretrain_op'], ops['classify_ops'].output],
+                                                    feed_dict={
+                                                        ops['test_spt_x']: spt_x,
+                                                        ops['test_spt_y']: spt_y,
+                                                        ops['test_qry_x']: qry_x,
+                                                        ops['test_qry_y']: qry_y
+                                                    })
+            correct.append(qry_pred == qry_y.argmax(1))
+            totoal_counter += batchsz
+
+            if totoal_counter > 1000:
+                break
+
+
+        accuracy = np.array(correct).sum() / totoal_counter
         tf.logging.info('>> Eval acc. on h: %.2f, Processed Images: %dk <<' % (accuracy, self.cur_nimg >> 10))
         return accuracy
 
