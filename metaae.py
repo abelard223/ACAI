@@ -262,6 +262,9 @@ class MetaAE(train.FAUL):
             NOTICE: this function will use outer `vars`.
             """
             x_spt, x_qry = task_input
+            print(x_spt)
+            print(x_spt.shape, x_qry.shape)
+
             preds_qry, losses_qry, accs_qry = [], [], []
 
             pred_spt = self.forward_ae(x_spt, vars)
@@ -301,24 +304,20 @@ class MetaAE(train.FAUL):
         ######################################################
         if training:
             # [b, 32, 32, 1]
-            train_spt_x = tf.placeholder(tf.float32, [None, n_way * k_spt, self.height, self.width, self.colors],
+            train_spt_x = tf.placeholder(tf.float32, [task_num, n_way * k_spt, self.height, self.width, self.colors],
                                          name='train_spt_x')
-            train_qry_x = tf.placeholder(tf.float32, [None, n_way * k_qry, self.height, self.width, self.colors],
+            train_qry_x = tf.placeholder(tf.float32, [task_num, n_way * k_qry, self.height, self.width, self.colors],
                                          name='train_qry_x')
             # [b, 10]
             # trian_spt_y and train_qry_y will NOT be used since its unsupervised training
             # but we will use test_spt_y and test_qry_y to get performance benchmark.
-            train_spt_y = tf.placeholder(tf.float32, [None, n_way * k_spt, self.nclass], name='train_spt_y')
-            train_qry_y = tf.placeholder(tf.float32, [None, n_way * k_qry, self.nclass], name='train_qry_y')
-
-            # 2 of task_num of [n*k, 32, 32, 1] & [n*k_qry, 32, 32, 1]
-            x_tasks = (tf.split(train_spt_x, num_or_size_splits=task_num, axis=0),
-                          tf.split(train_qry_x, num_or_size_splits=task_num, axis=0) )
+            train_spt_y = tf.placeholder(tf.float32, [task_num, n_way * k_spt, self.nclass], name='train_spt_y')
+            train_qry_y = tf.placeholder(tf.float32, [task_num, n_way * k_qry, self.nclass], name='train_qry_y')
 
             out_dtype = [tf.float32, [tf.float32] * update_num, tf.float32, [tf.float32] * update_num]
             # out_dtype.extend([tf.float32, [tf.float32]*update_num])
             pred_spt, preds_qry, loss_spt, losses_qry = \
-                tf.map_fn(task_metalearn, elems=x_tasks, dtype=out_dtype, parallel_iterations=task_num)
+                tf.map_fn(task_metalearn, elems=[train_spt_x, train_qry_x], dtype=out_dtype, parallel_iterations=task_num)
 
             self.loss_spt = tf.reduce_sum(loss_spt) / tf.to_float(task_num)
             self.losses_qry = [tf.reduce_sum(losses_qry[j]) / tf.to_float(task_num) for j in range(update_num)]
@@ -457,7 +456,7 @@ def main(argv):
     factor = int(round(math.log(dataset.width // FLAGS.h_d, 2)))
     model = MetaAE(dataset, FLAGS.train_dir,
                     n_way = 5,
-                    k_spt = 5,
+                    k_spt = 1,
                     k_qry = 15,
                     h_c = FLAGS.h_c,
                     c = FLAGS.c,
