@@ -231,9 +231,11 @@ class MetaAE(train.FAUL):
 
         return op
 
-    def model(self, h_c, c, factor, training=True):
+    def model(self, n_way, k_spt, k_qry, h_c, c, factor, training=True):
         """
-
+        :param n_way:
+        :param k_spt:
+        :param k_qry:
         :param h_c: latent channel
         :param c: basic channel number
         :param factor: channel factor
@@ -241,15 +243,17 @@ class MetaAE(train.FAUL):
         :return:
         """
         # meta batch size
-        task_num = FLAGS.task_num
+        task_num = FLAGS.batchsz
         update_num = FLAGS.update_num
         update_lr = FLAGS.update_lr
         meta_lr = FLAGS.meta_lr
-        # get hidden features maps dim/height/width and channel number
-        h_d, h_c = self.height>>factor, h_c
 
-        print('h_d:', h_d, 'h_c:', h_c, 'conv ch:', c, 'factor:', factor, 'batchsz:', FLAGS.batchsz)
+        # get hidden features maps dim/height/width and channel number
+        h_d = self.height>>factor
+
         print('tasks:', task_num, 'update_lr:', update_lr, 'update_num:', update_num, 'meta lr:', meta_lr)
+        print('n_way:', n_way, 'k_spt:', k_spt, 'k_qry:', k_qry)
+        print('h:', [h_d, h_d, h_c], 'conv ch:', c, 'factor:', factor)
 
         def task_metalearn(task_input):
             """
@@ -286,13 +290,6 @@ class MetaAE(train.FAUL):
 
 
             task_output = [pred_spt, preds_qry, loss_spt, losses_qry]
-
-            # task_accuracya = tf.contrib.metrics.accuracy(tf.argmax(tf.nn.softmax(task_outputa), 1), tf.argmax(labela, 1))
-            # for j in range(num_updates):
-            #     task_accuraciesb.append(
-            #         tf.contrib.metrics.accuracy(tf.argmax(tf.nn.softmax(task_outputbs[j]), 1), tf.argmax(labelb, 1)))
-            # task_output.extend([task_accuracya, task_accuraciesb])
-
             return task_output
 
 
@@ -301,18 +298,20 @@ class MetaAE(train.FAUL):
         # this is 1st time to get these variables, so it will create and return
         vars = self.get_weights(c, factor, h_c, 'encoder') + self.get_weights(c, factor, h_c, 'decoder')
 
-
+        ######################################################
         if training:
             # [b, 32, 32, 1]
-            train_spt_x = tf.placeholder(tf.float32, [None, self.height, self.width, self.colors], name='train_spt_x')
-            train_qry_x = tf.placeholder(tf.float32, [None, self.height, self.width, self.colors], name='train_qry_x')
+            train_spt_x = tf.placeholder(tf.float32, [None, n_way * k_spt, self.height, self.width, self.colors],
+                                         name='train_spt_x')
+            train_qry_x = tf.placeholder(tf.float32, [None, n_way * k_qry, self.height, self.width, self.colors],
+                                         name='train_qry_x')
             # [b, 10]
             # trian_spt_y and train_qry_y will NOT be used since its unsupervised training
             # but we will use test_spt_y and test_qry_y to get performance benchmark.
-            train_spt_y = tf.placeholder(tf.float32, [None, self.nclass], name='train_spt_y')
-            train_qry_y = tf.placeholder(tf.float32, [None, self.nclass], name='train_qry_y')
+            train_spt_y = tf.placeholder(tf.float32, [None, n_way * k_spt, self.nclass], name='train_spt_y')
+            train_qry_y = tf.placeholder(tf.float32, [None, n_way * k_qry, self.nclass], name='train_qry_y')
 
-            # 2 of task_num of [b/task_num, 32, 32, 1]
+            # 2 of task_num of [n*k, 32, 32, 1] & [n*k_qry, 32, 32, 1]
             x_tasks = (tf.split(train_spt_x, num_or_size_splits=task_num, axis=0),
                           tf.split(train_qry_x, num_or_size_splits=task_num, axis=0) )
 
@@ -343,13 +342,15 @@ class MetaAE(train.FAUL):
             with tf.control_dependencies(update_ops):
                 meta_op = tf.group([meta_op])
 
-        # FOR test.
-        # [b, 32, 32, 1]
-        test_spt_x = tf.placeholder(tf.float32, [None, self.height, self.width, self.colors], name='test_spt_x')
-        test_qry_x = tf.placeholder(tf.float32, [None, self.height, self.width, self.colors], name='test_qry_x')
+        #=========================================================
+        # [1, 5, 32, 32, 1] [1, 75, 32, 32, 1]
+        test_spt_x = tf.placeholder(tf.float32, [n_way * k_spt, self.height, self.width, self.colors],
+                                    name='test_spt_x')
+        test_qry_x = tf.placeholder(tf.float32, [n_way * k_qry, self.height, self.width, self.colors],
+                                    name='test_qry_x')
         # [b, 10]
-        test_spt_y = tf.placeholder(tf.float32, [None, self.nclass], name='test_spt_y')
-        test_qry_y = tf.placeholder(tf.float32, [None, self.nclass], name='test_qry_y')
+        test_spt_y = tf.placeholder(tf.float32, [n_way * k_spt, self.nclass], name='test_spt_y')
+        test_qry_y = tf.placeholder(tf.float32, [n_way * k_qry, self.nclass], name='test_qry_y')
 
         # [b, 4, 4, 16]
         h = tf.placeholder(tf.float32, [None, h_d, h_d, h_c], name='h')
@@ -375,14 +376,15 @@ class MetaAE(train.FAUL):
 
             # this op only optimize classifier, hence stop_gradient after encoder_op
             # classify_op is not a single op, including prediction and loss
-            classify_op = classifiers.single_layer_classifier(tf.stop_gradient(encoder_op), test_qry_y, self.nclass)
+            classify_op = classifiers.single_layer_classifier(tf.stop_gradient(encoder_op), test_qry_y, self.nclass,
+                                                              scope='classifier_%d'%k, reuse=False)
             classify_ops.append(classify_op)
             # record classification loss on latent
-            utils.HookReport.log_tensor(tf.reduce_mean(classify_op.loss), 'test_classify_h_loss_update_'%k)
+            utils.HookReport.log_tensor(tf.reduce_mean(classify_op.loss), 'test_classify_h_loss_update_%d'%k)
 
             return
 
-        ######################################################
+
         # record before pretrain status
         record_test_ops(vars, 0)
 
@@ -452,17 +454,14 @@ def main(argv):
     test_db = MnistFS('ae_data/mnist', mode='test')
     dataset = data.DataSet('mnist', train_db, test_db, None, 32, 32, 1, 5)
 
-    batchsz = FLAGS.batch
-    # given dataset name and batchsz encapsuled as a dict
-    # dataset = data.get_dataset(FLAGS.dataset, dict(batch_size=batchsz))
-    # latent: [?, 4, 4, 16]
-    scales = int(round(math.log(dataset.width // FLAGS.latent_width, 2)))
-    model = MetaAE(
-        dataset,
-        FLAGS.train_dir,
-        latent=FLAGS.latent, # channels of latent
-        depth=FLAGS.depth, # channels of first convolution
-        scales=scales)
+    factor = int(round(math.log(dataset.width // FLAGS.h_d, 2)))
+    model = MetaAE(dataset, FLAGS.train_dir,
+                    n_way = 5,
+                    k_spt = 5,
+                    k_qry = 15,
+                    h_c = FLAGS.h_c,
+                    c = FLAGS.c,
+                    factor = factor)
     model.train()
 
 
@@ -476,11 +475,10 @@ if __name__ == '__main__':
     flags.DEFINE_float('meta_lr', 0.001, 'meta Learning rate.')
     flags.DEFINE_float('update_lr', 0.05, 'update Learning rate.')
     flags.DEFINE_integer('update_num', 5, 'inner update steps')
-    flags.DEFINE_integer('task_num', 8, 'meta-task number')
-    flags.DEFINE_integer('batch', 64, 'Batch size.')
-    flags.DEFINE_string('dataset', 'mnist32', 'Data to train on.')
+    flags.DEFINE_integer('batchsz', 8, 'tasks number for meta-learning')
+    flags.DEFINE_string('db_name', 'mnist32', 'Data to train on.')
     flags.DEFINE_integer('total_kimg', 1 << 14, 'Training duration in samples.')
-    flags.DEFINE_integer('depth', 16, 'Depth of first for convolution.')
-    flags.DEFINE_integer('latent', 8, 'Latent depth = depth multiplied by latent_width ** 2.')
-    flags.DEFINE_integer('latent_width', 4, 'Width of the latent space.')
+    flags.DEFINE_integer('c', 16, 'Depth of first for convolution.')
+    flags.DEFINE_integer('h_c', 8, 'Latent depth = depth multiplied by latent_width ** 2.')
+    flags.DEFINE_integer('h_d', 4, 'Width of the latent space.')
     tf.app.run(main)

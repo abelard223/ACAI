@@ -18,17 +18,19 @@ class ClassifierOps(object):
         self.train_op = None
 
 
-def single_layer_classifier(h, l, nclass, scope='classifier', smoothing=None):
+def single_layer_classifier(h, l, nclass, scope='classifier', reuse=False, smoothing=None):
     """
 
     :param h: hidden placeholder
     :param l: label placeholder
     :param nclass: number of class
     :param scope: scope name for this module
+    :param reuse:
     :param smoothing:
     :return:
     """
-    with tf.variable_scope(scope):
+    # Here can reuse=True or reuse=Flase
+    with tf.variable_scope(scope, reuse=reuse):
         # [b, 4, 4, 16] => [b, -1]
         h0 = tf.layers.flatten(h)
         # => [b, 10]

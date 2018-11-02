@@ -142,12 +142,14 @@ class MnistFS:
         spt_x, spt_y, qry_x, qry_y = np.stack(spt_x, axis=0), np.stack(spt_y, axis=0),\
                                      np.stack(qry_x, axis=0), np.stack(qry_y, axis=0)
         # (8, 5, 784) (8, 75, 784) (8, 5) (8, 75)
+        # => [b, 5, 32, 32, 1], [b, 75, 32, 32, 1]
+        spt_x, qry_x = spt_x.reshape(batchsz, -1, 32, 32, 1), qry_x.reshape(batchsz, -1, 32, 32, 1)
         # print(spt_x.shape, qry_x.shape, spt_y.shape, qry_y.shape)
 
         if use_episode:
             return spt_x, spt_y, qry_x, qry_y
         else:
-            # [b, 5, 784] [b, 75, 784]
+            # [b, 5, 32, 32, 1] [b, 75, 32, 32, 1]
             batchx = np.concatenate([spt_x, qry_x], axis=1)
             # [b, 5] [b, 75]
             batchy = np.concatenate([spt_y, qry_y], axis=1)

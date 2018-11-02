@@ -134,6 +134,9 @@ class FAUL(CustomModel):
         self.eval_ops = None
         self.ops = None
 
+        for k, v in kwargs.items():
+            print(k, v)
+
     def eval_mode(self):
         """
         create a new eval graph and put all ops on this graph
@@ -165,7 +168,7 @@ class FAUL(CustomModel):
         :param report_kimg: report at every report_kimg
         :return:
         """
-        batch_size = FLAGS.batch
+        batchsz = FLAGS.batchsz
 
         if self.train_graph is None:
             self.train_graph = tf.Graph()
@@ -185,11 +188,11 @@ class FAUL(CustomModel):
             latent_accuracy_op = update_summary_var(self.latent_accuracy)
 
             summary_hook = tf.train.SummarySaverHook(
-                                save_steps=(report_kimg << 9) // batch_size, # save every steps
+                                save_steps=(report_kimg << 9) // batchsz, # save every steps
                                 output_dir=self.summary_dir,
                                 summary_op=tf.summary.merge_all())
-            stop_hook = tf.train.StopAtStepHook(last_step=1 + (FLAGS.total_kimg << 10) // batch_size)
-            report_hook = utils.HookReport(report_kimg << 10, batch_size)
+            stop_hook = tf.train.StopAtStepHook(last_step=1 + (FLAGS.total_kimg << 10) // batchsz)
+            report_hook = utils.HookReport(report_kimg << 10, batchsz)
 
             init_my_summary_op = lambda op, value: self.tf_sess.run(op, feed_dict={some_float: value})
 
@@ -209,12 +212,12 @@ class FAUL(CustomModel):
                     config=config) as sess:
 
                 self.sess = sess
-                self.cur_nimg = batch_size * self.tf_sess.run(global_step)
+                self.cur_nimg = batchsz * self.tf_sess.run(global_step)
 
                 while not sess.should_stop():
                     # run data_in ops first and then run ops.train_op
 
-                    spt_x, spt_y, qry_x, qry_y = self.train_data.get_batch(batch_size, use_episode=True)
+                    spt_x, spt_y, qry_x, qry_y = self.train_data.get_batch(batchsz, use_episode=True)
                     sess.run(ops['meta_op'], feed_dict={
                         ops['train_spt_x']: spt_x,
                         ops['train_spt_y']: spt_y,
@@ -224,7 +227,7 @@ class FAUL(CustomModel):
 
                     # MonitoredTrainingSession has an underlying session object: tf_session
                     # current computed number of image
-                    self.cur_nimg = batch_size * self.tf_sess.run(global_step)
+                    self.cur_nimg = batchsz * self.tf_sess.run(global_step)
 
 
                     # Time to evaluate classification accuracy
@@ -236,7 +239,37 @@ class FAUL(CustomModel):
                         init_my_summary_op(latent_accuracy_op, accuracy)
 
 
+    def eval_latent_accuracy(self, ops):
+        """
+        Eval MLP classification accuracy based on latent representation
+        :param ops:
+        :param batches:
+        :return:
+        """
 
+        batchsz = FLAGS.batch
+        correct = []
+        totoal_counter = 0
+
+        while True:
+            spt_x, spt_y, qry_x, qry_y = self.test_data.get_batch(batchsz, use_episode=True)
+            pretrain_loss, qry_pred = self.tf_sess.run([ops['pretrain_op'], ops['classify_ops'].output],
+                                                    feed_dict={
+                                                        ops['test_spt_x']: spt_x,
+                                                        ops['test_spt_y']: spt_y,
+                                                        ops['test_qry_x']: qry_x,
+                                                        ops['test_qry_y']: qry_y
+                                                    })
+            correct.append(qry_pred == qry_y.argmax(1))
+            totoal_counter += batchsz
+
+            if totoal_counter > 1000:
+                break
+
+
+        accuracy = np.array(correct).sum() / totoal_counter
+        tf.logging.info('>> Eval acc. on h: %.2f, Processed Images: %dk <<' % (accuracy, self.cur_nimg >> 10))
+        return accuracy
 
 
     def make_sample_grid_and_save(self, ops, batch_size=16, random=4, interpolation=16, height=16, save_to_disk=True):
@@ -339,37 +372,7 @@ class FAUL(CustomModel):
 
         return image_random, image_interpolation, image_interpolation_slerp, image_samples
 
-    def eval_latent_accuracy(self, ops):
-        """
-        Eval MLP classification accuracy based on latent representation
-        :param ops:
-        :param batches:
-        :return:
-        """
 
-        batchsz = FLAGS.batch
-        correct = []
-        totoal_counter = 0
-
-        while True:
-            spt_x, spt_y, qry_x, qry_y = self.test_data.get_batch(batchsz, use_episode=True)
-            pretrain_loss, qry_pred = self.tf_sess.run([ops['pretrain_op'], ops['classify_ops'].output],
-                                                    feed_dict={
-                                                        ops['test_spt_x']: spt_x,
-                                                        ops['test_spt_y']: spt_y,
-                                                        ops['test_qry_x']: qry_x,
-                                                        ops['test_qry_y']: qry_y
-                                                    })
-            correct.append(qry_pred == qry_y.argmax(1))
-            totoal_counter += batchsz
-
-            if totoal_counter > 1000:
-                break
-
-
-        accuracy = np.array(correct).sum() / totoal_counter
-        tf.logging.info('>> Eval acc. on h: %.2f, Processed Images: %dk <<' % (accuracy, self.cur_nimg >> 10))
-        return accuracy
 
 
 
