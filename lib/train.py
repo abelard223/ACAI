@@ -8,7 +8,7 @@ FLAGS = tf.flags.FLAGS
 
 class AEOps:
 
-    def __init__(self, x, h, label, encode, decode, ae, train_op, classify_latent=None):
+    def __init__(self, x, h, label, encode, decode, ae, train_op, classify_latent=None, pretrain_op=None):
         """
 
         :param x: input placeholder
@@ -27,7 +27,8 @@ class AEOps:
         self.decode = decode
         self.ae = ae
         self.train_op = train_op
-        self.classify_latent = classify_latent
+        self.classify_latent = classify_latent # prediction, not loss
+        self.pretrian_op = pretrain_op
 
 
 class CustomModel:
@@ -128,17 +129,19 @@ class FAUL(CustomModel):
         self.mean_smoothness = 0
         self.mean_distance = 0
         self.eval_graph = None
+        self.train_graph = None
         self.eval_sess = None
         self.eval_ops = None
-        self.pretrain_op = None # for meta learning
+        self.ops = None
 
     def eval_mode(self):
         """
         create a new eval graph and put all ops on this graph
-        restore model from ckpt
+        and restore model from ckpt
         :return:
         """
-        self.eval_graph = tf.Graph()
+        if self.eval_graph is None:
+            self.eval_graph = tf.Graph()
 
         with self.eval_graph.as_default():
             global_step = tf.train.get_or_create_global_step()
@@ -152,6 +155,8 @@ class FAUL(CustomModel):
             tf.logging.info('Restore  %s from ckpt, eval mode at global_step %d',
                                 self.__class__.__name__, self.eval_sess.run(global_step))
 
+    def eval(self):
+        pass
 
     def train_step(self, ops):
         """
@@ -169,8 +174,10 @@ class FAUL(CustomModel):
         :return:
         """
         batch_size = FLAGS.batch
+        if self.train_graph is None:
+            self.train_graph = tf.Graph()
 
-        with tf.Graph().as_default():
+        with self.train_graph.as_default():
 
             # data_in = self.train_data.make_one_shot_iterator().get_next()
             global_step = tf.train.get_or_create_global_step()
@@ -183,11 +190,11 @@ class FAUL(CustomModel):
             # create initialize op for variable:latent_accuracy,mean_smoothness,mean_distance
             update_summary_var = lambda x: tf.assign(x, some_float)
             latent_accuracy_op = update_summary_var(self.latent_accuracy)
-            mean_smoothness_op = update_summary_var(self.mean_smoothness)
-            mean_distance_op = update_summary_var(self.mean_distance)
+
 
             # main op
-            ops = self.model(**self.params)
+            self.ops = ops = self.model(**self.params)
+
 
 
             summary_hook = tf.train.SummarySaverHook(
@@ -230,18 +237,6 @@ class FAUL(CustomModel):
                         # self.tf_sess.run(latent_accuracy_op, feed_dict={some_float: accuracy})
                         init_my_summary_op(latent_accuracy_op, accuracy)
 
-                        if FLAGS.dataset in ('lines32', 'linesym32'):
-                            mean_ds = self.eval_custom_lines32(ops)
-                            init_my_summary_op(mean_distance_op, mean_ds[0])
-                            init_my_summary_op(mean_smoothness_op, mean_ds[1])
-                        elif FLAGS.dataset == 'lines32_vertical':
-                            mean_ds = self.eval_custom_lines32_vertical(ops)
-                            init_my_summary_op(mean_distance_op, mean_ds[0])
-                            init_my_summary_op(mean_smoothness_op, mean_ds[1])
-                        elif FLAGS.dataset == 'lines32':
-                            mean_ds = self.eval_custom_lines32(ops)
-                            init_my_summary_op(mean_distance_op, mean_ds[0])
-                            init_my_summary_op(mean_smoothness_op, mean_ds[1])
 
     def make_sample_grid_and_save(self, ops, batch_size=16, random=4, interpolation=16, height=16, save_to_disk=True):
         """
@@ -384,44 +379,7 @@ class FAUL(CustomModel):
         tf.logging.info('>> Eval acc. on h: %.2f, Processed Images: %dk <<' % (accuracy, self.cur_nimg >> 10))
         return accuracy
 
-    def eval_custom_lines32(self, ops, n_interpolations=256,
-                            n_images_per_interpolation=16):
-        image = self.make_sample_grid_and_save(
-            ops, 64, 0, n_images_per_interpolation, n_interpolations,
-            save_to_disk=False)[1]
-        image = image.reshape([n_interpolations, 32,
-                               n_images_per_interpolation, 32, 1])
-        batch2d = image.transpose(0, 2, 1, 3, 4)
-        mean_distance, mean_smoothness = eval.line_eval(batch2d)
-        tf.logging.info('kimg=%d  mean_distance=%.4f  mean_smoothness=%.4f' %
-                        (self.cur_nimg >> 10, mean_distance, mean_smoothness))
-        return mean_distance, mean_smoothness
 
-    def eval_custom_lines32_vertical(self, ops, n_interpolations=256,
-                                     n_images_per_interpolation=16):
-        image = self.make_sample_grid_and_save(
-            ops, 64, 0, n_images_per_interpolation, n_interpolations,
-            save_to_disk=False)[1]
-        image = image.reshape([n_interpolations, 32,
-                               n_images_per_interpolation, 32, 1])
-        batch2d = image.transpose(0, 2, 1, 3, 4)
-        mean_distance, mean_smoothness = eval.line_eval_vertical(batch2d)
-        tf.logging.info('kimg=%d  mean_distance=%.4f  mean_smoothness=%.4f' %
-                        (self.cur_nimg >> 10, mean_distance, mean_smoothness))
-        return mean_distance, mean_smoothness
-
-    def eval_custom_lines32(self, ops, n_interpolations=256,
-                               n_images_per_interpolation=16):
-        image = self.make_sample_grid_and_save(
-            ops, 64, 0, n_images_per_interpolation, n_interpolations,
-            save_to_disk=False)[1]
-        image = image.reshape([n_interpolations, 32,
-                               n_images_per_interpolation, 32, 1])
-        batch2d = image.transpose(0, 2, 1, 3, 4)
-        mean_distance, mean_smoothness = eval.line_eval(batch2d)
-        tf.logging.info('kimg=%d  mean_distance=%.4f  mean_smoothness=%.4f' %
-                        (self.cur_nimg >> 10, mean_distance, mean_smoothness))
-        return mean_distance, mean_smoothness
 
     def model(self, **kwargs):
         raise NotImplementedError
