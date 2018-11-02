@@ -336,8 +336,12 @@ class MetaAE(train.FAUL):
 
             for i in range(update_num):
                 # print(losses_qry[i])
-                utils.HookReport.log_tensor(self.losses_qry[i], 'loss_qry%d' % i)
+                utils.HookReport.log_tensor(self.losses_qry[i], 'train_loss_qry%d' % i)
                 # utils.HookReport.log_tensor(tf.sqrt(self.losses_qry[i]) * 127.5, 'rmse%d'%i)
+
+            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            with tf.control_dependencies(update_ops):
+                meta_op = tf.group([meta_op])
 
         # FOR test.
         # [b, 32, 32, 1]
@@ -350,7 +354,7 @@ class MetaAE(train.FAUL):
         # [b, 4, 4, 16]
         h = tf.placeholder(tf.float32, [None, h_d, h_d, h_c], name='h')
 
-        ######################################################
+
         # we will use these ops to get test process
         encoder_ops, decoder_ops, ae_ops, classify_ops = [], [], [], []
 
@@ -374,8 +378,11 @@ class MetaAE(train.FAUL):
             classify_op = classifiers.single_layer_classifier(tf.stop_gradient(encoder_op), test_qry_y, self.nclass)
             classify_ops.append(classify_op)
             # record classification loss on latent
-            utils.HookReport.log_tensor(tf.reduce_mean(classify_op.loss), 'classify_h_loss_update_'%k)
+            utils.HookReport.log_tensor(tf.reduce_mean(classify_op.loss), 'test_classify_h_loss_update_'%k)
 
+            return
+
+        ######################################################
         # record before pretrain status
         record_test_ops(vars, 0)
 
@@ -402,20 +409,25 @@ class MetaAE(train.FAUL):
 
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
-            meta_op = tf.group([meta_op])
-
-
-        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        with tf.control_dependencies(update_ops):
             pretrain_op = tf.group([pretrain_op])
 
         ops = {
-            'meta_op': meta_op,
-            'pretrain_op': pretrain_op,
-            'classify_ops': classify_ops, # array of (op.output, op.loss)
-            'encoder_ops': encoder_ops,
-            'decoder_ops': decoder_ops,
-            'ae_ops': ae_ops
+            'meta_op': meta_op if training else None,
+            'train_spt_x': train_spt_x if training else None,
+            'train_spt_y': train_spt_y if training else None,
+            'train_qry_x': train_qry_x if training else None,
+            'train_qry_y': train_qry_y if training else None,
+
+            'pretrain_op' : pretrain_op,
+            'classify_ops': classify_ops, # len=update_num+1, array of (op.output, op.loss)
+            'encoder_ops' : encoder_ops, # len=update_num+1,
+            'decoder_ops' : decoder_ops, # len=update_num+1,
+            'ae_ops'      : ae_ops, # len=update_num+1
+
+            'test_spt_x': test_spt_x,
+            'test_spt_y': test_spt_y,
+            'test_qry_x': test_qry_x,
+            'test_qry_y': test_qry_y
         }
 
 

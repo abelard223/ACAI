@@ -158,14 +158,6 @@ class FAUL(CustomModel):
     def eval(self):
         pass
 
-    def train_step(self, ops):
-        """
-        Override parent Function!!!
-        :param ops: merged ops, instance of class AEOps
-        :return:
-        """
-        x, label = self.train_data.get_batch(FLAGS.batch, use_episode=False)
-        self.sess.run(ops.train_op, feed_dict={ops.x: x, ops.label: label})
 
     def train(self, report_kimg=1 << 6):
         """
@@ -191,12 +183,6 @@ class FAUL(CustomModel):
             update_summary_var = lambda x: tf.assign(x, some_float)
             latent_accuracy_op = update_summary_var(self.latent_accuracy)
 
-
-            # main op
-            self.ops = ops = self.model(**self.params)
-
-
-
             summary_hook = tf.train.SummarySaverHook(
                                 save_steps=(report_kimg << 9) // batch_size, # save every steps
                                 output_dir=self.summary_dir,
@@ -207,9 +193,12 @@ class FAUL(CustomModel):
             init_my_summary_op = lambda op, value: self.tf_sess.run(op, feed_dict={some_float: value})
 
 
+
+            # main op
+            ops = self.model(**self.params)
+
             config = tf.ConfigProto()
             config.gpu_options.allow_growth = True
-
             with tf.train.MonitoredTrainingSession(
                     checkpoint_dir=self.checkpoint_dir, # automatically restore from ckpt
                     hooks=[stop_hook],
@@ -223,7 +212,15 @@ class FAUL(CustomModel):
 
                 while not sess.should_stop():
                     # run data_in ops first and then run ops.train_op
-                    self.train_step(ops)
+
+                    spt_x, spt_y, qry_x, qry_y = self.train_data.get_batch(batch_size, use_episode=True)
+                    sess.run(ops['meta_op'], feed_dict={
+                        ops['train_spt_x']:spt_x,
+                        ops['train_spt_y']:spt_y,
+                        ops['train_qry_x']:qry_x,
+                        ops['train_qry_y']:qry_y
+                    })
+
                     # MonitoredTrainingSession has an underlying session object: tf_session
                     # current computed number of image
                     self.cur_nimg = batch_size * self.tf_sess.run(global_step)
