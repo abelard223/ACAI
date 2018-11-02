@@ -379,7 +379,7 @@ class MetaAE(train.FAUL):
                                                               scope='classifier_%d'%k, reuse=False)
             classify_ops.append(classify_op)
             # record classification loss on latent
-            utils.HookReport.log_tensor(tf.reduce_mean(classify_op.loss), 'test_classify_h_loss_update_%d'%k)
+            # utils.HookReport.log_tensor(tf.reduce_mean(classify_op.loss), 'test_classify_h_loss_update_%d'%k)
 
             return
 
@@ -432,14 +432,14 @@ class MetaAE(train.FAUL):
         }
 
 
-        def gen_images():
-            return self.make_sample_grid_and_save(ops, interpolation=16, height=16)
-
-        recon, inter, slerp, samples = tf.py_func(gen_images, [], [tf.float32]*4)
-        tf.summary.image('reconstruction', tf.expand_dims(recon, 0))
-        tf.summary.image('interpolation', tf.expand_dims(inter, 0))
-        tf.summary.image('slerp', tf.expand_dims(slerp, 0))
-        tf.summary.image('samples', tf.expand_dims(samples, 0))
+        # def gen_images():
+        #     return self.make_sample_grid_and_save(ops, interpolation=16, height=16)
+        #
+        # recon, inter, slerp, samples = tf.py_func(gen_images, [], [tf.float32]*4)
+        # tf.summary.image('reconstruction', tf.expand_dims(recon, 0))
+        # tf.summary.image('interpolation', tf.expand_dims(inter, 0))
+        # tf.summary.image('slerp', tf.expand_dims(slerp, 0))
+        # tf.summary.image('samples', tf.expand_dims(samples, 0))
 
         return ops
 
