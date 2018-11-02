@@ -178,12 +178,9 @@ class FAUL(CustomModel):
             # data_in = self.train_data.make_one_shot_iterator().get_next()
             global_step = tf.train.get_or_create_global_step()
 
-            self.latent_accuracy = self.add_summary_var('latent_accuracy')
-            self.mean_smoothness = self.add_summary_var('mean_smoothness')
-            self.mean_distance = self.add_summary_var('mean_distance')
 
             some_float = tf.placeholder(tf.float32, [], 'some_float')
-            # create initialize op for variable:latent_accuracy,mean_smoothness,mean_distance
+            self.latent_accuracy = self.add_summary_var('latent_accuracy')
             update_summary_var = lambda x: tf.assign(x, some_float)
             latent_accuracy_op = update_summary_var(self.latent_accuracy)
 
@@ -192,7 +189,7 @@ class FAUL(CustomModel):
                                 output_dir=self.summary_dir,
                                 summary_op=tf.summary.merge_all())
             stop_hook = tf.train.StopAtStepHook(last_step=1 + (FLAGS.total_kimg << 10) // batchsz)
-            report_hook = utils.HookReport(report_kimg << 8, batchsz)
+            report_hook = utils.HookReport(report_kimg << 7, batchsz)
 
             init_my_summary_op = lambda op, value: self.tf_sess.run(op, feed_dict={some_float: value})
 
@@ -232,7 +229,7 @@ class FAUL(CustomModel):
 
 
                     # Time to evaluate classification accuracy
-                    if self.cur_nimg % (report_kimg << 10) == 0:
+                    if self.cur_nimg % (report_kimg << 8) == 0:
                         print('eval...')
                         # return with float accuracy
                         accuracy = self.eval_latent_accuracy(ops)
