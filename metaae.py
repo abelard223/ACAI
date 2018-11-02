@@ -3,11 +3,15 @@ from    lib import train, utils, classifiers, data, layers
 import  math
 from    tensorflow import flags
 
+from    mnistFS import MnistFS
+
 FLAGS = tf.flags.FLAGS
 
 
 
-class MetaAE(train.AE):
+class MetaAE(train.FAUL):
+
+
 
     def get_weights(self, c, factor, h_c, name):
         """
@@ -374,9 +378,13 @@ class MetaAE(train.AE):
 def main(argv):
     print(FLAGS.flag_values_dict())
 
+    train_db = MnistFS('ae_data/mnist', mode='train')
+    test_db = MnistFS('ae_data/mnist', mode='test')
+    dataset = data.DataSet('mnist', train_db, test_db, None, 32, 32, 1, 5)
+
     batchsz = FLAGS.batch
     # given dataset name and batchsz encapsuled as a dict
-    dataset = data.get_dataset(FLAGS.dataset, dict(batch_size=batchsz))
+    # dataset = data.get_dataset(FLAGS.dataset, dict(batch_size=batchsz))
     # latent: [?, 4, 4, 16]
     scales = int(round(math.log(dataset.width // FLAGS.latent_width, 2)))
     model = MetaAE(

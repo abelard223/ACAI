@@ -4,6 +4,8 @@ import  numpy as np
 from    multiprocessing import Pool
 from    matplotlib import pyplot as plt
 
+from    PIL import Image
+from    torchvision import transforms
 
 class MnistFS:
 
@@ -99,6 +101,22 @@ class MnistFS:
         qry_x, qry_y = self.union_shuffle(qry_x, qry_y)
 
 
+        transform = transforms.Compose([
+            # [784] => [28, 28]
+            lambda x: x.reshape(28, 28),
+            # convert to PIL.Image from numpy
+            lambda x: Image.fromarray(np.uint8(x*255)),
+            # resize
+            transforms.Resize((32, 32)),
+            # flatten
+            lambda x: np.array(x).reshape(-1)
+        ])
+        spt_x = list(map(lambda x:transform(x), spt_x))
+        spt_x = np.array(spt_x)
+        qry_x = list(map(lambda x:transform(x), qry_x))
+        qry_x = np.array(qry_x)
+
+
         return spt_x, spt_y, qry_x, qry_y
 
     def get_batch(self, batchsz, use_episode=True):
@@ -132,7 +150,7 @@ class MnistFS:
             # [b, 5, 784] [b, 75, 784]
             batchx = np.concatenate([spt_x, qry_x], axis=1)
             # [b, 5] [b, 75]
-            batchy = np.concatenate([spt_y, qry_y], axis=0)
+            batchy = np.concatenate([spt_y, qry_y], axis=1)
             # shuffle once again
             # TODO: shuffle here!
             # batchx, batchy = self.union_shuffle(batchx, batchy)
@@ -174,7 +192,7 @@ def main():
             fig.add_subplot(row, column, i+1)
 
             # print(x[i].shape)
-            img = x[i].reshape(28, 28)
+            img = x[i].reshape(32, 32)
             plt.imshow(img)
         plt.pause(0.001)
         print(y)
